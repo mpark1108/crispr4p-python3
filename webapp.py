@@ -1,14 +1,121 @@
 #!/usr/bin/env python3
 # Standalone local HTTP web server for CRISPR4P (Python 3 compatible)
 
+import html
 import os
 import json
 import urllib.parse
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
+
 import crispr4p.crispr4p as crp
+from crispr4p.spedit import (
+    has_internal_bsai_site,
+    make_spedit_oligos,
+)
+
 
 PORT = 8080
+
+
+def build_spedit_table(table_pos_grna) -> str:
+    """
+    Build an HTML table containing SpEDIT/pLSB oligos for every
+    CRISPR4P guide candidate.
+    """
+    if not table_pos_grna:
+        return """
+        <div id="spedit_oligos">
+            <h3>SpEDIT/pLSB oligos</h3>
+            <p>No guide candidates were available.</p>
+        </div>
+        """
+
+    rows_html = []
+
+    for candidate_number, row in enumerate(table_pos_grna, start=1):
+        try:
+            # CRISPR4P row layout:
+            # row[0]    = seed
+            # row[1]    = primer tuple
+            # row[1][0] = complete 20-nt gRNA
+            guide = row[1][0]
+
+            forward, reverse = make_spedit_oligos(guide)
+
+            if has_internal_bsai_site(guide):
+                bsai_status = (
+                    '<strong style="color: #b00020;">'
+                    "Warning: internal BsaI site in guide"
+                    "</strong>"
+                )
+            else:
+                bsai_status = "None detected"
+
+            rows_html.append(
+                f"""
+                <tr>
+                    <td>{candidate_number}</td>
+                    <td><code>{html.escape(guide)}</code></td>
+                    <td style="word-break: break-all;">
+                        <code>{html.escape(forward)}</code>
+                    </td>
+                    <td style="word-break: break-all;">
+                        <code>{html.escape(reverse)}</code>
+                    </td>
+                    <td>{bsai_status}</td>
+                </tr>
+                """
+            )
+
+        except (IndexError, TypeError, ValueError) as error:
+            rows_html.append(
+                f"""
+                <tr>
+                    <td>{candidate_number}</td>
+                    <td colspan="4">
+                        Unable to generate SpEDIT oligos:
+                        {html.escape(str(error))}
+                    </td>
+                </tr>
+                """
+            )
+
+    return f"""
+    <div id="spedit_oligos" style="margin-top: 30px;">
+        <h3>SpEDIT/pLSB BsaI Golden Gate oligos</h3>
+
+        <p>
+            These are 52-nt oligos shown 5&#8242;&rarr;3&#8242;.
+            The 20-nt guide is included without the PAM.
+        </p>
+
+        <table
+            border="1"
+            cellpadding="6"
+            cellspacing="0"
+            style="border-collapse: collapse; width: 100%;"
+        >
+            <thead>
+                <tr style="background-color: #D1F0A6;">
+                    <th>Candidate</th>
+                    <th>20-nt guide</th>
+                    <th>SpEDIT forward oligo, 52 nt</th>
+                    <th>SpEDIT reverse oligo, 52 nt</th>
+                    <th>Internal BsaI site</th>
+                </tr>
+            </thead>
+            <tbody>
+                {''.join(rows_html)}
+            </tbody>
+        </table>
+
+        <p>
+            Intended for the SpEDIT/pLSB BsaI Golden Gate workflow.
+            Verify sequences and experimental requirements before ordering.
+        </p>
+    </div>
+    """
 
 
 class CRISPR4PHandler(BaseHTTPRequestHandler):
@@ -117,6 +224,17 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
         else:
             return f'<font color="red"><h3>Error: Oligo sequence must be 20 bp (seed only) or 23 bp (seed + PAM). Current length: {len(oligo_seq)}</h3></font>'
 
+        spedit_forward, spedit_reverse = make_spedit_oligos(seed)
+
+        if has_internal_bsai_site(seed):
+            spedit_warning = (
+                '<strong style="color: #b00020;">'
+                "Warning: this guide contains an internal BsaI recognition site."
+                "</strong>"
+            )
+        else:
+            spedit_warning = "No internal BsaI site detected."
+
         datapath = "data/"
         FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
         COORDINATES = datapath + 'COORDINATES.txt'
@@ -155,6 +273,17 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
               <b>Oligo Sequence (Query)</b>: {oligo_seq}<br>
               <b>Seed Segment (20bp)</b>: {seed}<br>
               <b>Mismatches Allowed</b>: {mismatches}<br>
+              <hr>
+
+              <h4>SpEDIT/pLSB BsaI Golden Gate oligos</h4>
+
+              <b>Forward oligo, 52 nt, 5&#8242;&rarr;3&#8242;</b>:
+              <code>{spedit_forward}</code><br>
+
+              <b>Reverse oligo, 52 nt, 5&#8242;&rarr;3&#8242;</b>:
+              <code>{spedit_reverse}</code><br>
+
+              <b>BsaI check</b>: {spedit_warning}<br>
           </div>
 
           <h3 class="toggle_header">Genome Match Summary</h3>
@@ -222,7 +351,13 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
         src_path = os.path.dirname(__file__) if os.path.dirname(__file__) else '.'
         with open(os.path.join(src_path, 'template/container_table.html'), 'r', encoding='utf-8') as fh:
             template_file = fh.read()
-        return template_file % (result_dict)
+
+        # return template_file with spedit_table
+        rendered_design = template_file % result_dict
+        spedit_table = build_spedit_table(tablePos_grna)
+
+        return rendered_design + spedit_table
+        # return template_file % (result_dict)
 
 
 def main():
