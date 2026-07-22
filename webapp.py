@@ -1,124 +1,241 @@
-#!/usr/bin/python
-# Import modules for CGI handling
-import cgi
-import os, json
+#!/usr/bin/env python3
+# Standalone local HTTP web server for CRISPR4P (Python 3 compatible)
+
+import os
+import json
+import urllib.parse
+import sys
+from http.server import HTTPServer, BaseHTTPRequestHandler
 import crispr4p.crispr4p as crp
 
+PORT = 8080
 
-class viewForm(object):
-    def __call__(self):
-        text = self.print_html_header()
-        text += self.load_bahler_template()
-        return text
 
-    def print_html_header(self):
-        return "Content-type: text/html\n\n"
+class CRISPR4PHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
 
-    def load_bahler_template(self):
+        if path == "/" or path == "/index.html" or path == "/webapp.py":
+            self.serve_form()
+        elif path.startswith("/css/"):
+            self.serve_css(path)
+        else:
+            self.send_error(404, "File not found")
+
+    def do_POST(self):
+        parsed_path = urllib.parse.urlparse(self.path)
+        path = parsed_path.path
+
+        if path == "/webapp.py" or path == "/":
+            self.process_post()
+        else:
+            self.send_error(404, "File not found")
+
+    def serve_form(self, result_content=""):
         src_path = os.path.dirname(__file__)
         src_path = "." if src_path == "" else src_path
 
         try:
-            with open(src_path + '/template/bahler_template.html') as fh:
+            template_path = os.path.join(src_path, 'template/bahler_template.html')
+            with open(template_path, 'r', encoding='utf-8') as fh:
                 template_file = fh.read()
-            return template_file
+            
+            # The template has "%s" at line 61 which is replaced by result_content
+            rendered = template_file % result_content
+            
+            self.send_response(200)
+            self.send_header("Content-type", "text/html; charset=utf-8")
+            self.end_headers()
+            self.wfile.write(rendered.encode('utf-8'))
         except IOError as err:
-            print err
+            self.send_error(500, f"Error reading templates: {err}")
 
+    def serve_css(self, path):
+        src_path = os.path.dirname(__file__)
+        src_path = "." if src_path == "" else src_path
+        filename = os.path.basename(path)
+        css_file = os.path.join(src_path, "css", filename)
+        if os.path.exists(css_file):
+            try:
+                with open(css_file, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                self.send_response(200)
+                self.send_header("Content-type", "text/css")
+                self.end_headers()
+                self.wfile.write(content.encode('utf-8'))
+            except IOError:
+                self.send_error(500, "Error reading CSS file")
+        else:
+            self.send_error(404, "CSS File not found")
 
-class PrimerDesignModel(object):
-    def __init__(self, name=None, cr=None, start=None, end=None):
-        self.name = name
-        self.cr = cr
-        self.start = start
-        self.end = end
-        self.primercheck = None
+    def process_post(self):
+        content_length = int(self.headers.get('Content-Length', 0))
+        post_data = self.rfile.read(content_length).decode('utf-8')
+        params = urllib.parse.parse_qs(post_data)
 
-    def run(self):
+        # Extract values
+        name = params.get('name', [None])[0]
+        chromosome = params.get('chromosome', [None])[0]
+        coor_lower = params.get('coor_lower', [None])[0]
+        coor_upper = params.get('coor_upper', [None])[0]
+        oligo_sequence = params.get('oligo_sequence', [None])[0]
+        oligo_mismatch_str = params.get('oligo_mismatch', ['0'])[0]
+
+        # Clean values
+        name = name.strip() if name else None
+        chromosome = chromosome.strip() if chromosome else None
+        coor_lower = coor_lower.strip() if coor_lower else None
+        coor_upper = coor_upper.strip() if coor_upper else None
+        oligo_sequence = oligo_sequence.strip().upper() if oligo_sequence else None
+
+        result_html = ""
+
+        try:
+            if oligo_sequence:
+                try:
+                    mismatches = int(oligo_mismatch_str)
+                except ValueError:
+                    mismatches = 0
+                result_html = self.run_oligo_model(oligo_sequence, mismatches)
+            elif name or (chromosome and coor_lower and coor_upper):
+                result_html = self.run_design_model(name, chromosome, coor_lower, coor_upper)
+            else:
+                result_html = '<font color="red"><h3>Error: Please fill either Name, Coordinates, or Oligo Sequence</h3></font>'
+        except Exception as e:
+            result_html = f'<font color="red"><h3>ERROR during execution: {str(e)}</h3></font>'
+
+        self.serve_form(result_html)
+
+    def run_oligo_model(self, oligo_seq, mismatches):
+        if len(oligo_seq) == 20:
+            seed = oligo_seq
+            pam = "NGG"
+        elif len(oligo_seq) == 23:
+            seed = oligo_seq[:20]
+            pam = oligo_seq[20:]
+        else:
+            return f'<font color="red"><h3>Error: Oligo sequence must be 20 bp (seed only) or 23 bp (seed + PAM). Current length: {len(oligo_seq)}</h3></font>'
+
         datapath = "data/"
         FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
         COORDINATES = datapath + 'COORDINATES.txt'
         SYNONIMS = datapath + 'SYNONIMS.txt'
 
         pd = crp.PrimerDesign(FASTA, COORDINATES, SYNONIMS, precomputed_folder='precomputed')
-        try:
-            self.tablePos_grna, self.hr_dna, self.primercheck, self.name, self.cr, self.start, self.end = pd.runWeb(self.name, self.cr, self.start, self.end, nMismatch=0)
-        except AssertionError as err:
-            print "Error: ", err
+        pd.getNGGsFromGenome()
 
-    def result_html(self):
-        pm = self.primercheck[0] if self.primercheck else {}
-        result_dict = {'name': self.name,
-                       'chromosome': self.cr,
-                       'start': self.start,
-                       'end': self.end,
-                       'hrfw': self.hr_dna[0],
-                       'hrrv': self.hr_dna[1],
-                       'deleted_dna': self.hr_dna[2],
+        query_ngg = crp.NGG(chro='query', pos=0, strand=1, seed=seed, pam=pam)
+        _, tableDict = pd._single_table_worker(query_ngg, mismatches)
+
+        match_8 = len(tableDict.get(8, []))
+        match_10 = len(tableDict.get(10, []))
+        match_12 = len(tableDict.get(12, []))
+        match_14 = len(tableDict.get(14, []))
+        match_16 = len(tableDict.get(16, []))
+        match_18 = len(tableDict.get(18, []))
+        match_20 = len(tableDict.get(20, []))
+
+        matches_20 = tableDict.get(20, [])
+        details_html = ""
+        if matches_20:
+            details_html += '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: monospace; font-size: 12px;">'
+            details_html += '<tr style="background-color: #D1F0A6;"><th>#</th><th>Chromosome</th><th>Position</th><th>Strand</th><th>Genomic Target Sequence (Seed)</th><th>PAM</th></tr>'
+            for idx, match in enumerate(matches_20):
+                strand_str = "+" if match.strand == 1 else "-"
+                details_html += f'<tr><td>{idx+1}</td><td>{match.chromosome}</td><td>{match.pos}</td><td>{strand_str}</td><td>{match.seed}</td><td>{match.pam}</td></tr>'
+            details_html += '</table>'
+        else:
+            details_html = "<p>No full 20bp target/off-target matches found in the genome.</p>"
+
+        block = f"""
+        <div id="search_content">
+          <div id="search_summary">
+              <h4>Oligo Search Results:</h4>
+              <b>Oligo Sequence (Query)</b>: {oligo_seq}<br>
+              <b>Seed Segment (20bp)</b>: {seed}<br>
+              <b>Mismatches Allowed</b>: {mismatches}<br>
+          </div>
+
+          <h3 class="toggle_header">Genome Match Summary</h3>
+          <div style="padding: 10px;">
+            <table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 50%;">
+              <thead>
+                <tr style="background-color: #D1F0A6;">
+                  <th>Seed Match Length</th>
+                  <th>Matching Sites (adjacent to NGG/NAG PAM)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr><td>8 bp</td><td>{match_8}</td></tr>
+                <tr><td>10 bp</td><td>{match_10}</td></tr>
+                <tr><td>12 bp</td><td>{match_12}</td></tr>
+                <tr><td>14 bp</td><td>{match_14}</td></tr>
+                <tr><td>16 bp</td><td>{match_16}</td></tr>
+                <tr><td>18 bp</td><td>{match_18}</td></tr>
+                <tr><td>20 bp</td><td>{match_20}</td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <h3 class="toggle_header">Details of Full 20bp Matches</h3>
+          <div style="padding: 10px;">
+            {details_html}
+          </div>
+        </div>
+        """
+        return block
+
+    def run_design_model(self, name, chromosome, coor_lower, coor_upper):
+        datapath = "data/"
+        FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
+        COORDINATES = datapath + 'COORDINATES.txt'
+        SYNONIMS = datapath + 'SYNONIMS.txt'
+
+        pd = crp.PrimerDesign(FASTA, COORDINATES, SYNONIMS, precomputed_folder='precomputed')
+        tablePos_grna, hr_dna, primercheck, name, cr, start, end = pd.runWeb(name, chromosome, coor_lower, coor_upper, nMismatch=0)
+
+        pm = primercheck[0] if primercheck else {}
+        
+        def get_tm_str(val):
+            try:
+                return "%d &deg;C" % int(round(float(val)))
+            except (ValueError, TypeError):
+                return "- &deg;C"
+
+        result_dict = {'name': name or '-',
+                       'chromosome': cr,
+                       'start': start,
+                       'end': end,
+                       'hrfw': hr_dna[0],
+                       'hrrv': hr_dna[1],
+                       'deleted_dna': hr_dna[2],
                        'primer_left': pm.get('PRIMER_LEFT_0_SEQUENCE', '-'),
-                       'left_tm': "%d &deg;C" % int(round(pm.get('PRIMER_LEFT_0_TM', '0'))),
+                       'left_tm': get_tm_str(pm.get('PRIMER_LEFT_0_TM', 0)),
                        'primer_right': pm.get('PRIMER_RIGHT_0_SEQUENCE', '-'),
-                       'right_tm': "%d &deg;C" %  int(round(pm.get('PRIMER_RIGHT_0_TM', '0'))),
+                       'right_tm': get_tm_str(pm.get('PRIMER_RIGHT_0_TM', 0)),
                        'deleted_dna_size': str(pm.get('PRIMER_PAIR_0_PRODUCT_SIZE', '-')) + " (bp)",
                        'negative_result_size': str(pm.get('negative_result', '-')) + " (bp)"}
 
-        result_dict['json_table'] = json.dumps(self.tablePos_grna)
+        result_dict['json_table'] = json.dumps(tablePos_grna)
 
         src_path = os.path.dirname(__file__) if os.path.dirname(__file__) else '.'
-        with open(src_path + '/template/container_table.html') as fh:
+        with open(os.path.join(src_path, 'template/container_table.html'), 'r', encoding='utf-8') as fh:
             template_file = fh.read()
         return template_file % (result_dict)
 
 
-class controller(object):
-    def __init__(self):
-        self.form = cgi.FieldStorage()
-
-    def check_form_action(self):
-
-        coordinate_form_names = ["coor_upper", "coor_lower", "chromosome"]
-        get_form_val = lambda x: str(self.form.getvalue(x))
-
-        if self.form.has_key("action"):
-            if self.form.has_key("name"):
-                return [get_form_val("name"), None, None, None]
-            elif all(j==True for j in [self.form.has_key(i) for i in coordinate_form_names]):
-                return [None, get_form_val("chromosome"),
-                        get_form_val("coor_lower"),
-                        get_form_val("coor_upper")]
-            else:
-                print '<font color="red"> Error: neither inputs of name mode nor\
-                        coordinate mode is complete</font>' # for web user
-                raise ValueError("neither inputs of name mode nor coordinate\
-                        mode is complete.")
-        else: return None
-
-    def is_render(self):
-        if self.form.has_key("render"): return True
-        else: return False
+def main():
+    server_address = ('', PORT)
+    httpd = HTTPServer(server_address, CRISPR4PHandler)
+    print(f"Starting local server on http://localhost:{PORT} ...")
+    print("Press Ctrl+C to stop.")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print("\nShutting down server.")
+        sys.exit(0)
 
 
-    def run_model(self):
-        if not self.is_render():
-            model_arguments = self.check_form_action()
-            if model_arguments != None:
-                self.model = PrimerDesignModel(*model_arguments)
-                try:
-                    self.model.run()
-                    ans = self.model.result_html()
-                except:
-                    ans = '<font color="red"><h2>ERROR: please contact to: <a href="mailto:m.rodriguezlopez@ucl.ac.uk">m.rodriguezlopez@ucl.ac.uk</a></h2></font>'
-                finally:
-                    return ans
-        return  ''
-
-
-def webrun():
-    init_form = viewForm()
-    temp = init_form()
-    model = controller()
-    ans = model.run_model()
-    print temp % ans
-
-
-webrun()
+if __name__ == "__main__":
+    main()

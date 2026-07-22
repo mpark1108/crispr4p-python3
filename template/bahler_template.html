@@ -54,6 +54,9 @@ var toggle_interface=function(id){
       Chromosome: <input type = "text" name="chromosome" >
       Coordinates: from <INPUT type="number" name="coor_lower" min="0"> to <INPUT type = number name = "coor_upper" min="0"><br>
       e.g. chromosome = I; Coordinates from 112000 to 115000<br><br>
+      or specify an oligo sequence to check off-targets:<br>
+      Oligo Sequence (20bp/23bp): <input type="text" name="oligo_sequence" placeholder="e.g. CATATACGCCTATGCTGATA"><br>
+      Allowed mismatches (0-3): <input type="number" name="oligo_mismatch" min="0" max="3" value="0"><br><br>
       <input type="submit" name="action" value="Submit"><p></p><div id="loader"></div><br>
       </FORM>
   </div>

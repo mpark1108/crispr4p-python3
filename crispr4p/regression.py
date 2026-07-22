@@ -32,11 +32,11 @@ for ind, nmis in enumerate(mismatches_list):
             pd.runCL(localArgs)
         except:
             errors.append(' '.join(localArgs))
-        print 'Running regression:', inde, localArgs, time.time()-_runtime, len(errors)
+        print('Running regression:', inde, localArgs, time.time()-_runtime, len(errors))
 if errors:
     with open('errors.txt', 'w') as fh:
-        fh.write(datetime.datetime.now() + '\n')
+        fh.write(str(datetime.datetime.now()) + '\n')
         fh.write('\n'.join(errors))
 
-print 'Running time:', time.time()-starttime
+print('Running time:', time.time()-starttime)
 
