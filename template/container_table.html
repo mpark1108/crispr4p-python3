@@ -24,18 +24,103 @@
 
                         function update_primer(number)
                         {
-                            var primer = rows[number][1]
-                            document.getElementById('primer_algo').innerHTML = "5'-" + primer[0] + "-3'";
-                            document.getElementById('pam').innerHTML = primer[5];
-                            document.getElementById('primer_forward').innerHTML = "5'-" + primer[1] + "-3'";
-                            document.getElementById('primer_reverse').innerHTML = "5'-" + primer[2] + "-3'";
-                            document.getElementById('overlapping_primer_forward').innerHTML = "5'-" + primer[0] + primer[1].substring(10) + "-3'";
-                            document.getElementById('overlapping_primer_reverse').innerHTML = "5'-" + rev_complement(primer[0]) + primer[2].substring(10) + "-3'";
-                            document.getElementById('primer_pos').innerHTML = primer[3][0] + " -" + primer[3][1];
-                            document.getElementById('primer_strand').innerHTML = primer[4];
+                            var index = Number(number);
+                            var primer = rows[index][1];
+
+                            document.getElementById('primer_algo').textContent =
+                                "5'-" + primer[0] + "-3'";
+
+                            document.getElementById('pam').textContent = primer[5];
+
+                            document.getElementById('primer_forward').textContent =
+                                "5'-" + primer[1] + "-3'";
+
+                            document.getElementById('primer_reverse').textContent =
+                                "5'-" + primer[2] + "-3'";
+
+                            document.getElementById('overlapping_primer_forward').textContent =
+                                "5'-" + primer[0] + primer[1].substring(10) + "-3'";
+
+                            document.getElementById('overlapping_primer_reverse').textContent =
+                                "5'-" + rev_complement(primer[0]) +
+                                 primer[2].substring(10) + "-3'";
+
+                            document.getElementById('primer_pos').textContent =
+                                primer[3][0] + " -" + primer[3][1];
+
+                            document.getElementById('primer_strand').textContent =
+                                primer[4];
+
+                            update_spedit(index);
                         }
 
+			function update_spedit(number)
+			{
+			    var candidate = spedit_rows[Number(number)];
+
+			    var guideElement =
+			        document.getElementById('spedit_guide');
+
+			    var forwardElement =
+			        document.getElementById('spedit_forward');
+
+			    var reverseElement =
+			        document.getElementById('spedit_reverse');
+
+			    var warningElement =
+			        document.getElementById('spedit_bsai_warning');
+
+			    var errorElement =
+			        document.getElementById('spedit_error');
+
+			    if (!candidate) {
+			        guideElement.textContent = "";
+			        forwardElement.textContent = "";
+			        reverseElement.textContent = "";
+			        warningElement.textContent = "";
+			        errorElement.textContent =
+			            "No SpEDIT information is available for this candidate.";
+			        return;
+			    }
+
+			    if (candidate.error) {
+			        guideElement.textContent = candidate.guide || "";
+			        forwardElement.textContent = "";
+			        reverseElement.textContent = "";
+			        warningElement.textContent = "";
+			        errorElement.textContent = candidate.error;
+			        return;
+			    }
+
+			    guideElement.textContent =
+			        "5'-" + candidate.guide + "-3'";
+
+			    forwardElement.textContent =
+			        "5'-" + candidate.forward + "-3'";
+
+			    reverseElement.textContent =
+			        "5'-" + candidate.reverse + "-3'";
+
+			    errorElement.textContent = "";
+
+			    if (candidate.has_internal_bsai) {
+			        warningElement.textContent =
+			            "Warning: this guide contains an internal BsaI " +
+			            "recognition site.";
+
+			        warningElement.style.color = "#b00020";
+			        warningElement.style.fontWeight = "bold";
+			    } else {
+			        warningElement.textContent =
+			            "No internal BsaI site detected.";
+
+			        warningElement.style.color = "";
+			        warningElement.style.fontWeight = "";
+			    }
+			}
+
                         var rows = %(json_table)s;
+                        var spedit_rows = %(spedit_json)s;
                         function createTable() {
                             var table = document.getElementById("posTable");
                             var len = 0;
@@ -90,5 +175,25 @@
   <div class="l_field">PCR product size with deletion:</div><div class="r_field">%(deleted_dna_size)s</div><br>
   <div class="l_field">PCR product size without deletion:</div><div class="r_field">%(negative_result_size)s</div><br>
   <div class="l_field">Region surrounding deletion junction:</div><div class="r_field">%(deleted_dna)s</div><br>
+
+  <h5>SpEDIT/pLSB BsaI Golden Gate oligos</h5>
+  <div class="l_field">Selected sgRNA:</div>
+  <div class="r_field" id="spedit_guide"></div>
+  <br>
+
+  <div class="l_field">SpEDIT forward oligo, 52 nt:</div>
+  <div class="r_field" id="spedit_forward"></div>
+  <br>
+
+  <div class="l_field">SpEDIT reverse oligo, 52 nt:</div>
+  <div class="r_field" id="spedit_reverse"></div>
+  <br>
+
+  <div class="l_field">Internal BsaI site check:</div>
+  <div class="r_field" id="spedit_bsai_warning"></div>
+  <br>
+
+  <div id="spedit_error" style="color: #b00020;"></div>
+  <br>
   </div>
 </div>
