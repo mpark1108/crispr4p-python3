@@ -8,3 +8,7 @@ __pycache__/
 .venv/
 venv/
 env/
+
+# runtime cache
+precomputed/*.pickle
+precomputed_stand_alone/*.pickle

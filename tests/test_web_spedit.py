@@ -1,10 +1,9 @@
 import unittest
 
-from webapp import build_spedit_table
+from webapp import build_spedit_candidate_data
 
 
 def make_crispr4p_row(guide: str):
-    """Create the minimum CRISPR4P result-row structure needed by the view."""
     primer_tuple = (
         guide,
         "LEGACY_FORWARD",
@@ -17,57 +16,59 @@ def make_crispr4p_row(guide: str):
     return [guide, primer_tuple]
 
 
-class TestSpeditWebOutput(unittest.TestCase):
-    def test_table_contains_published_ade6_oligos(self) -> None:
+class TestSpeditCandidateData(unittest.TestCase):
+    def test_preserves_candidate_order(self) -> None:
+        first = "ACATTGGCTTACGACGGTCG"
+        second = "TTGATAGCAACAGTGGCGAC"
+
+        candidates = build_spedit_candidate_data(
+            [
+                make_crispr4p_row(first),
+                make_crispr4p_row(second),
+            ]
+        )
+
+        self.assertEqual(first, candidates[0]["guide"])
+        self.assertEqual(second, candidates[1]["guide"])
+
+    def test_generates_oligos_for_selected_candidate(self) -> None:
         guide = "TTGATAGCAACAGTGGCGAC"
 
-        output = build_spedit_table(
+        candidates = build_spedit_candidate_data(
             [make_crispr4p_row(guide)]
         )
 
-        self.assertIn(guide, output)
-
-        self.assertIn(
-            "CTAGAGGTCTCGGACT"
-            "TTGATAGCAACAGTGGCGAC"
-            "GTTTCGAGACCCTTCC",
-            output,
+        self.assertEqual(
+            (
+                "CTAGAGGTCTCGGACT"
+                "TTGATAGCAACAGTGGCGAC"
+                "GTTTCGAGACCCTTCC"
+            ),
+            candidates[0]["forward"],
         )
 
-        self.assertIn(
-            "GGAAGGGTCTCGAAAC"
-            "GTCGCCACTGTTGCTATCAA"
-            "AGTCCGAGACCTCTAG",
-            output,
+        self.assertEqual(
+            (
+                "GGAAGGGTCTCGAAAC"
+                "GTCGCCACTGTTGCTATCAA"
+                "AGTCCGAGACCTCTAG"
+            ),
+            candidates[0]["reverse"],
         )
 
-    def test_table_labels_sequences_as_52_nt(self) -> None:
-        output = build_spedit_table(
-            [make_crispr4p_row("TTGATAGCAACAGTGGCGAC")]
+    def test_internal_bsai_warning_is_aligned(self) -> None:
+        safe = "TTGATAGCAACAGTGGCGAC"
+        unsafe = "TTTTGAATGGTCTCAGTTGT"
+
+        candidates = build_spedit_candidate_data(
+            [
+                make_crispr4p_row(safe),
+                make_crispr4p_row(unsafe),
+            ]
         )
 
-        self.assertIn("SpEDIT forward oligo, 52 nt", output)
-        self.assertIn("SpEDIT reverse oligo, 52 nt", output)
-
-    def test_table_warns_about_internal_bsai_site(self) -> None:
-        guide = "AAAAAGGTCTCAAAAAAAAA"
-
-        output = build_spedit_table(
-            [make_crispr4p_row(guide)]
-        )
-
-        self.assertIn(
-            "Warning: internal BsaI site in guide",
-            output,
-        )
-
-    def test_empty_results_are_handled(self) -> None:
-        output = build_spedit_table([])
-
-        self.assertIn(
-            "No guide candidates were available",
-            output,
-        )
+        self.assertFalse(candidates[0]["has_internal_bsai"])
+        self.assertTrue(candidates[1]["has_internal_bsai"])
 
 
 if __name__ == "__main__":
