@@ -319,6 +319,49 @@ class PrimerDesign:
                             self.NGGs[index_8] = []
                         self.NGGs[index_8].append(NGG(name, pos, strand, string, pam))
 
+    def getOligoHitCoordinates(self, ngg):
+        """
+        Return an indexed oligo hit's reference PAM and Cas9 cut coordinates.
+
+        NGG.pos is a 0-based position in whichever strand sequence was
+        searched by getNGGsFromGenome(). Keep that internal value unchanged
+        for matching, and normalize only when reporting a genomic hit.
+
+        Returns:
+            ((pam_start, pam_end), (cut_left, cut_right)), with all values
+            expressed as 1-based reference-chromosome coordinates. The PAM
+            interval is inclusive and the cut lies between cut_left/right.
+        """
+        chromosome = self.chromosomesData.get(ngg.chromosome)
+        if chromosome is None:
+            raise ValueError(
+                'Chromosome "%s" not found for oligo hit' % ngg.chromosome
+            )
+
+        if ngg.strand == 1:
+            # pos is the 0-based first G/A of the matched GG/AG dinucleotide;
+            # the complete NRG PAM begins one base earlier.
+            pam_start = ngg.pos
+            pam_end = ngg.pos + 2
+            cut_left = pam_start - 4
+        elif ngg.strand == -1:
+            # pos is measured in the reverse-complement sequence. Convert the
+            # inclusive three-base PAM back to forward-reference coordinates.
+            chromosome_length = len(chromosome.sequence)
+            pam_start = chromosome_length - ngg.pos - 1
+            pam_end = chromosome_length - ngg.pos + 1
+            cut_left = pam_end + 3
+        else:
+            raise ValueError("Oligo hit strand must be 1 or -1")
+
+        reference_pam = chromosome.sequence[pam_start - 1:pam_end]
+        if ngg.strand == -1:
+            reference_pam = self.reverseComplement(reference_pam)
+        if reference_pam != ngg.pam:
+            raise ValueError("Normalized PAM coordinates do not match the FASTA")
+
+        return (pam_start, pam_end), (cut_left, cut_left + 1)
+
     @staticmethod
     def genomeCompare(g1, g2, nmismatch):
         if nmismatch == 0:
@@ -570,7 +613,14 @@ class PrimerDesign:
             print(f"\nDetails of {len(matches_20)} genomic target/off-target sites (full 20bp matches):")
             for idx, match in enumerate(matches_20):
                 strand_str = "+" if match.strand == 1 else "-"
-                print(f"  {idx+1:2d}. Chromosome: {match.chromosome:4s} | Position: {match.pos:9d} | Strand: {strand_str} | Sequence: {match.seed} | PAM: {match.pam}")
+                pam_coords, cut_coords = self.getOligoHitCoordinates(match)
+                print(
+                    f"  {idx+1:2d}. Chromosome: {match.chromosome:4s} | "
+                    f"PAM coordinates: {pam_coords[0]} - {pam_coords[1]} | "
+                    f"Cut: {cut_coords[0]} | {cut_coords[1]} | "
+                    f"Strand: {strand_str} | Sequence: {match.seed} | "
+                    f"PAM: {match.pam}"
+                )
         else:
             print("\nNo full 20bp matches found in the genome.")
 

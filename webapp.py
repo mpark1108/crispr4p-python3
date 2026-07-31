@@ -198,10 +198,17 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
         details_html = ""
         if matches_20:
             details_html += '<table border="1" cellpadding="5" cellspacing="0" style="border-collapse: collapse; width: 100%; font-family: monospace; font-size: 12px;">'
-            details_html += '<tr style="background-color: #D1F0A6;"><th>#</th><th>Chromosome</th><th>Position</th><th>Strand</th><th>Genomic Target Sequence (Seed)</th><th>PAM</th></tr>'
+            details_html += '<tr style="background-color: #D1F0A6;"><th>#</th><th>Chromosome</th><th>PAM coordinates (1-based, inclusive)</th><th>Cas9 cut</th><th>Strand</th><th>Genomic Target Sequence (Seed)</th><th>PAM</th></tr>'
             for idx, match in enumerate(matches_20):
                 strand_str = "+" if match.strand == 1 else "-"
-                details_html += f'<tr><td>{idx+1}</td><td>{match.chromosome}</td><td>{match.pos}</td><td>{strand_str}</td><td>{match.seed}</td><td>{match.pam}</td></tr>'
+                pam_coords, cut_coords = pd.getOligoHitCoordinates(match)
+                details_html += (
+                    f'<tr><td>{idx+1}</td><td>{match.chromosome}</td>'
+                    f'<td>{pam_coords[0]} - {pam_coords[1]}</td>'
+                    f'<td>{cut_coords[0]} | {cut_coords[1]}</td>'
+                    f'<td>{strand_str}</td><td>{match.seed}</td>'
+                    f'<td>{match.pam}</td></tr>'
+                )
             details_html += '</table>'
         else:
             details_html = "<p>No full 20bp target/off-target matches found in the genome.</p>"
