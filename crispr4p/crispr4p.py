@@ -17,6 +17,7 @@ FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
 COORDINATES = datapath + 'COORDINATES.txt'
 SYNONIMS = datapath + 'SYNONIMS.txt'
 PRECOMPUTED = 'precomputed_stand_alone'
+PRECOMPUTED_VERSION = 2
 ############### CONFIGURATION VALUES ###################
 SEED_LENGTH = 20
 UNIQUE_INDEX_LENGTH = (-12,-3)   # range of values selected for uniqueness
@@ -232,14 +233,19 @@ class PrimerDesign:
             startInd = start+1+ind
             gRNA = crFasta.sequence[startInd-22:startInd-2]
             pam = crFasta.sequence[startInd-2:startInd+1]
+            pam_start = startInd - 2
         else:   #strand -1
             startInd = end-1-ind
             pam = self.reverseComplement(crFasta.sequence[startInd:startInd+3])
             gRNA = self.reverseComplement(crFasta.sequence[startInd+3:startInd+23])
+            pam_start = startInd
         gRNAfw = gRNA[-10:] + 'gttttagagctagaaatagcaagttaaaataa'
         gRNArv = self.reverseComplement(gRNA[:10]) + 'ttcttcggtacaggttatgttttttggcaaca'
 
-        return gRNA, gRNAfw, gRNArv, (startInd, startInd+3), ngg.strand, pam
+        # Sequence slices above are 0-based and end-exclusive. Report the PAM
+        # to users as a conventional 1-based, inclusive three-base interval.
+        pam_coordinates = (pam_start + 1, pam_start + 3)
+        return gRNA, gRNAfw, gRNArv, pam_coordinates, ngg.strand, pam
 
     def _genPrecomputedName(self, name, nMismatch, cr, start, end):
         if not os.path.isdir(self.precomputed_folder):
@@ -247,9 +253,13 @@ class PrimerDesign:
         if name:
             #use systematic name (SPAC)
             sistematic_name = [x for x in self.annotationParser_.synonims_ if name in x][0][0]
-            basename = '%s_n%s.pickle' % (sistematic_name, nMismatch)
+            basename = '%s_v%s_n%s.pickle' % (
+                sistematic_name, PRECOMPUTED_VERSION, nMismatch
+            )
         else:
-            basename = '%s_%s_%s_n%s.pickle' % (cr, start, end, nMismatch)
+            basename = '%s_%s_%s_v%s_n%s.pickle' % (
+                cr, start, end, PRECOMPUTED_VERSION, nMismatch
+            )
         return os.path.join(self.precomputed_folder, basename)
 
     @staticmethod
