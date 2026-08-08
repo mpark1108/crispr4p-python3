@@ -17,7 +17,7 @@ FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
 COORDINATES = datapath + 'COORDINATES.txt'
 SYNONIMS = datapath + 'SYNONIMS.txt'
 PRECOMPUTED = 'precomputed_stand_alone'
-PRECOMPUTED_VERSION = 2
+PRECOMPUTED_VERSION = 3
 ############### CONFIGURATION VALUES ###################
 SEED_LENGTH = 20
 UNIQUE_INDEX_LENGTH = (-12,-3)   # range of values selected for uniqueness
@@ -212,7 +212,10 @@ class PrimerDesign:
         ##user input NGGs
         findNGGs = {}
         for strand, data in {1:crFasta.sequence[start:end+1], -1:self.reverseComplement(crFasta.sequence[start:end+1])}.items():
-            for match in re.finditer('GG', data):
+            # Use a zero-width lookahead so both GG starts in GGG are tested.
+            # A consuming ``GG`` regex skips the second, overlapping SpCas9
+            # PAM and therefore misses a valid guide.
+            for match in re.finditer(r'(?=GG)', data):
                 pos = match.start()
                 pam = data[pos-1:pos+2]
                 seed = data[pos-SEED_LENGTH-1:pos-1]
@@ -307,8 +310,10 @@ class PrimerDesign:
         self.NGGs = {}
         for name, sequence in self.chromosomesData.items():
             for strand, data in {1:sequence.sequence, -1:self.reverseComplement(sequence.sequence)}.items():
-                for pam in ('GG', 'AG'):
-                    for match in re.finditer(pam, data):
+                for pam_suffix in ('GG', 'AG'):
+                    # PAMs can overlap (for example, the two GG starts in
+                    # GGG), so do not consume the matched dinucleotide.
+                    for match in re.finditer(r'(?=%s)' % pam_suffix, data):
                         pos = match.start()
                         pam = data[pos-1:pos+2]
                         string = data[pos-SEED_LENGTH-1:pos-1]
