@@ -14,6 +14,7 @@ if __package__:
         ensure_cache_directory,
         load_or_compute,
     )
+    from .design import TableSorting, run_design_query
     from .genome import GenomePamIndex
     from .guides import (
         build_guide_primer_tuple,
@@ -39,6 +40,7 @@ else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
         ensure_cache_directory,
         load_or_compute,
     )
+    from design import TableSorting, run_design_query
     from genome import GenomePamIndex
     from guides import (
         build_guide_primer_tuple,
@@ -82,41 +84,6 @@ def timeit(method):
         return result
 
     return timed
-
-
-class TableSorting:
-    def __init__(self, posList, reversed_sort):
-        self.reversed = reversed_sort
-        self.posList = posList
-
-    def bubbleSort(self, alist):
-        for passnum in range(len(alist)-1,0,-1):
-            for i in range(passnum):
-                if self._biggerThanTuple(alist[i], alist[i+1]):
-                    temp = alist[i]
-                    alist[i] = alist[i+1]
-                    alist[i+1] = temp
-
-    def _biggerThanTuple(self, tup1, tup2):
-        '''
-        Compares two tuples with the attributes set up in the init.
-        :param tup1:
-        :param tup2:
-        :return:
-        '''
-        iterRange = list(range(self.posList[0], self.posList[1]+1))
-        iterRange = list(reversed(iterRange)) if self.reversed else iterRange
-
-        for i in iterRange:
-            if tup1[i] > tup2[i]:
-                return True
-            elif tup1[i] < tup2[i]:
-                return False
-
-
-    def sortByPosCriteria(self, table):
-        self.bubbleSort(table)
-        return table
 
 
 class CPU_RAM:
@@ -282,31 +249,21 @@ class PrimerDesign:
             :param coords: tuple(int, int, int)
             :return: tuple(1,2,3)
         '''
-        if not self.regression:
-            self.getNGGsFromGenome()
-        crFasta = self.chromosomesData.get(chromosome, None)
-
-        #find user input nggs
-        self._getUserNGGs(crFasta, start, end)
-
-        #get primers in parallel
-        self.gRNA_Table(nMismatch)
-
-        #Check primer GRNA
-        for key in self.tableNGGs:
-            primerGRNA = self.getPrimerGRNA(crFasta, start, end, key)
-            key.primer = primerGRNA
-
-        #create table
-        tablepos = []
-        for key, value in self.tableNGGs.items():
-            newrow = [key.seed, key.primer] + [len(value[ind]) for ind in range(8,21,2)]
-            tablepos.append(newrow)
-
-        #sort table
-        tablepos = TableSorting((2, len(tablepos[0])-1), reversed_sort=True).sortByPosCriteria(tablepos)
-        hr_DNA, primerCheck = [x(crFasta, start, end) for x in (self.HR_DNA, self.CheckingPrimers)]
-        return tablepos, hr_DNA, primerCheck, self.tableNGGs
+        return run_design_query(
+            chromosome,
+            start,
+            end,
+            nMismatch,
+            regression=self.regression,
+            chromosomes=self.chromosomesData,
+            guide_matches=self.tableNGGs,
+            ensure_genome_index=self.getNGGsFromGenome,
+            discover_guides=self._getUserNGGs,
+            match_guides=self.gRNA_Table,
+            build_guide_primer=self.getPrimerGRNA,
+            build_hr_dna=self.HR_DNA,
+            build_checking_primers=self.CheckingPrimers,
+        )
 
     def getNGGsFromGenome(self):
         '''
