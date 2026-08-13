@@ -11,6 +11,11 @@ import queue
 
 from primer3 import bindings as primer3
 
+if __package__:
+    from .genome import GenomePamIndex
+else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
+    from genome import GenomePamIndex
+
 datapath = os.path.join(os.path.dirname(__file__), "../data/")
 
 FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
@@ -155,14 +160,19 @@ class PrimerDesign:
 
     complements = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
 
-    def __init__(self, sequenceFile, coordinates, synomins, verbose=False, precomputed_folder=PRECOMPUTED, regression=False):
+    def __init__(self, sequenceFile, coordinates, synomins, verbose=False, precomputed_folder=PRECOMPUTED, regression=False, genome_index=None):
         self.sequenceFile_ = sequenceFile
         self.chromosomesData = self.readsequence(self.sequenceFile_)
         self._numAlternativeCheckings = 2
         self.annotationParser_ = AnnotationParser(coordinates, synomins)
         self.userNGGs = []
         self.tableNGGs = {}
-        self.NGGs = None
+        self.genome_index = genome_index
+        self.NGGs = (
+            genome_index.by_suffix
+            if genome_index is not None
+            else None
+        )
         self.verbose = verbose
         self.precomputed_folder = precomputed_folder
         self.regression = regression
@@ -316,22 +326,19 @@ class PrimerDesign:
         Run at initialization.
         :return:
         '''
-        self.NGGs = {}
-        for name, sequence in self.chromosomesData.items():
-            for strand, data in {1:sequence.sequence, -1:self.reverseComplement(sequence.sequence)}.items():
-                for pam_suffix in ('GG', 'AG'):
-                    # PAMs can overlap (for example, the two GG starts in
-                    # GGG), so do not consume the matched dinucleotide.
-                    for match in re.finditer(r'(?=%s)' % pam_suffix, data):
-                        pos = match.start()
-                        pam = data[pos-1:pos+2]
-                        string = data[pos-SEED_LENGTH-1:pos-1]
+        if getattr(self, 'genome_index', None) is None:
+            chromosome_sequences = {
+                name: chromosome.sequence
+                for name, chromosome in self.chromosomesData.items()
+            }
+            self.genome_index = GenomePamIndex.build(
+                chromosome_sequences,
+                hit_factory=NGG,
+                seed_length=SEED_LENGTH,
+            )
 
-                        # index last 8
-                        index_8 = string[-8:]
-                        if index_8 not in self.NGGs:
-                            self.NGGs[index_8] = []
-                        self.NGGs[index_8].append(NGG(name, pos, strand, string, pam))
+        self.NGGs = self.genome_index.by_suffix
+        return self.genome_index
 
     def getOligoHitCoordinates(self, ngg):
         """
@@ -399,7 +406,8 @@ class PrimerDesign:
 
     def _single_table_worker(self, userNGG, nMismatch):
         index_8 = userNGG.seed[-8:]
-        genomeNGG = self.NGGs.get(index_8, [])[:]
+        # Copy the immutable index bucket into the legacy per-query list.
+        genomeNGG = list(self.NGGs.get(index_8, ()))
         tableDict = {8: genomeNGG}
 
         for it in range(10, 21, 2):

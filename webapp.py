@@ -4,6 +4,7 @@
 import os
 import urllib.parse
 import sys
+from functools import lru_cache
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
 from crispr4p.service import Crispr4pService, OligoLengthError
@@ -20,8 +21,9 @@ from crispr4p.web_views import (
 PORT = 8080
 
 
+@lru_cache(maxsize=1)
 def create_service():
-    """Create an isolated application service for one web operation."""
+    """Reuse immutable genome data while isolating each query's engine."""
     return Crispr4pService.from_project_data(
         precomputed_folder="precomputed",
     )

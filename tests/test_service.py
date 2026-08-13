@@ -27,6 +27,7 @@ class RecordingDesigner:
         self.run_web_calls = []
         self.index_calls = 0
         self.oligo_calls = []
+        self.genome_index = kwargs.get("genome_index")
         self.__class__.instances.append(self)
 
     def runWeb(self, **kwargs):
@@ -35,6 +36,9 @@ class RecordingDesigner:
 
     def getNGGsFromGenome(self):
         self.index_calls += 1
+        if self.genome_index is None:
+            self.genome_index = object()
+        return self.genome_index
 
     def _single_table_worker(self, query, n_mismatch):
         self.oligo_calls.append((query, n_mismatch))
@@ -134,8 +138,9 @@ class TestCrispr4pService(unittest.TestCase):
         self.service.design_gene("ade6")
         self.service.design_region("III", "100", "200")
         self.service.analyze_oligo(GUIDE)
+        self.service.analyze_oligo(GUIDE)
 
-        self.assertEqual(3, len(RecordingDesigner.instances))
+        self.assertEqual(4, len(RecordingDesigner.instances))
         self.assertIsNot(
             RecordingDesigner.instances[0],
             RecordingDesigner.instances[1],
@@ -143,6 +148,16 @@ class TestCrispr4pService(unittest.TestCase):
         self.assertIsNot(
             RecordingDesigner.instances[1],
             RecordingDesigner.instances[2],
+        )
+        self.assertIsNot(
+            RecordingDesigner.instances[2],
+            RecordingDesigner.instances[3],
+        )
+        shared_index = RecordingDesigner.instances[2].genome_index
+        self.assertIs(shared_index, self.service.genome_index)
+        self.assertIs(
+            shared_index,
+            RecordingDesigner.instances[3].constructor_kwargs["genome_index"],
         )
 
     def test_oligo_analysis_returns_structured_existing_results(self) -> None:

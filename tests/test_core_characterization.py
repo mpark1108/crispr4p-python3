@@ -9,6 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from crispr4p.crispr4p import PrimerDesign
+from crispr4p.genome import GenomePamIndex
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -52,6 +53,34 @@ class TestCoreCharacterization(unittest.TestCase):
         self.assertEqual(
             ADE6_COORDINATES,
             tuple(self.designer.annotationParser_.getCoordsFromName("ade6")),
+        )
+
+    def test_real_genome_index_shape_and_ade6_bucket_are_unchanged(self) -> None:
+        index = self.designer.genome_index
+
+        self.assertIsInstance(index, GenomePamIndex)
+        self.assertIs(index.by_suffix, self.designer.NGGs)
+        self.assertEqual(65367, len(index))
+        self.assertEqual(2267539, index.hit_count)
+        self.assertEqual(9, len(index.get("", ())))
+        self.assertEqual(
+            [
+                ("III", 1316795, 1, "ACATTGGCTTACGACGGTCG", "TGG"),
+                ("III", 347120, 1, "GAGAGAAGTACGGACGGTCG", "GAG"),
+                ("III", 1233769, 1, "TCTCAAGATTAAGACGGTCG", "TAG"),
+                ("II", 397432, 1, "AGACATTCGCGGGACGGTCG", "TGG"),
+                ("I", 3430748, 1, "GGCTACGCTAGGGACGGTCG", "AGG"),
+            ],
+            [
+                (
+                    hit.chromosome,
+                    hit.pos,
+                    hit.strand,
+                    hit.seed,
+                    hit.pam,
+                )
+                for hit in index["GACGGTCG"]
+            ],
         )
 
     def test_ade6_candidate_order_and_match_counts_are_unchanged(self) -> None:

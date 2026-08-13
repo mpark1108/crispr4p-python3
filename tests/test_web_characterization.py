@@ -76,6 +76,16 @@ OLIGO_RESULT = OligoAnalysisResult(
 
 
 class TestWebRenderingCharacterization(unittest.TestCase):
+    def test_web_service_is_reused_for_read_only_genome_data(self) -> None:
+        webapp.create_service.cache_clear()
+        try:
+            first = webapp.create_service()
+            second = webapp.create_service()
+        finally:
+            webapp.create_service.cache_clear()
+
+        self.assertIs(first, second)
+
     def test_oligo_result_html_is_unchanged(self) -> None:
         handler = make_handler()
         service = Mock()

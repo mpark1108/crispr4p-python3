@@ -1,5 +1,8 @@
 import hashlib
+import pickle
+import tempfile
 import unittest
+from pathlib import Path
 
 from crispr4p.cli import format_design_result, format_oligo_result
 from crispr4p.service import Crispr4pService
@@ -57,6 +60,35 @@ class TestServiceIntegration(unittest.TestCase):
                 format_design_result(self.design_result).encode("utf-8")
             ).hexdigest(),
         )
+
+    def test_version_3_cache_round_trip_excludes_shared_index(self) -> None:
+        with tempfile.TemporaryDirectory() as cache_directory:
+            cold_service = Crispr4pService.from_project_data(
+                precomputed_folder=cache_directory,
+            )
+            cold_result = cold_service.design_gene("ade6")
+            cache_path = (
+                Path(cache_directory) / "SPCC1322.13_v3_n0.pickle"
+            )
+
+            with cache_path.open("rb") as cache_file:
+                cached_result = pickle.load(cache_file)
+
+            warm_service = Crispr4pService.from_project_data(
+                precomputed_folder=cache_directory,
+            )
+            warm_result = warm_service.design_gene("ade6")
+
+        self.assertEqual(4, len(cached_result))
+        self.assertIsInstance(cached_result[3], dict)
+        first_match_table = next(iter(cached_result[3].values()))
+        self.assertIsInstance(first_match_table[8], list)
+        self.assertEqual(
+            cold_result.to_legacy()[:3],
+            warm_result.to_legacy()[:3],
+        )
+        self.assertIsNotNone(cold_service.genome_index)
+        self.assertIsNone(warm_service.genome_index)
         self.assertEqual(
             "74fa7e168045e969add6b88b2999025f60099aaf96911afac9a3b26c3968c53f",
             hashlib.sha256(

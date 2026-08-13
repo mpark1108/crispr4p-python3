@@ -47,6 +47,7 @@ class Crispr4pService:
         precomputed_folder="precomputed",
         designer_factory=PrimerDesign,
         designer_verbose=False,
+        genome_index=None,
     ):
         self.sequence_file = os.fspath(sequence_file)
         self.coordinates_file = os.fspath(coordinates_file)
@@ -54,6 +55,7 @@ class Crispr4pService:
         self.precomputed_folder = os.fspath(precomputed_folder)
         self._designer_factory = designer_factory
         self.designer_verbose = designer_verbose
+        self._genome_index = genome_index
 
     @classmethod
     def from_project_data(
@@ -61,6 +63,7 @@ class Crispr4pService:
         precomputed_folder="precomputed",
         designer_factory=PrimerDesign,
         designer_verbose=False,
+        genome_index=None,
     ):
         """Create a service using the reference files shipped with CRISPR4P."""
         return cls(
@@ -71,6 +74,7 @@ class Crispr4pService:
             precomputed_folder=precomputed_folder,
             designer_factory=designer_factory,
             designer_verbose=designer_verbose,
+            genome_index=genome_index,
         )
 
     def design_gene(self, name, n_mismatch=0):
@@ -101,6 +105,7 @@ class Crispr4pService:
         spedit_forward, spedit_reverse = make_spedit_oligos(seed)
         designer = self._new_designer()
         designer.getNGGsFromGenome()
+        self._remember_genome_index(designer)
 
         query = NGG(
             chro="query",
@@ -156,7 +161,7 @@ class Crispr4pService:
         n_mismatch=0,
     ):
         designer = self._new_designer()
-        return DesignResult.from_legacy(
+        result = DesignResult.from_legacy(
             designer.runWeb(
                 name=name,
                 cr=chromosome,
@@ -166,14 +171,31 @@ class Crispr4pService:
                 nMismatch=n_mismatch,
             )
         )
+        self._remember_genome_index(designer)
+        return result
 
     def _new_designer(self):
         # PrimerDesign stores query-specific mutable state, so do not reuse an
         # instance across service calls or concurrent HTTP requests.
+        options = {
+            "precomputed_folder": self.precomputed_folder,
+            "verbose": self.designer_verbose,
+        }
+        if self._genome_index is not None:
+            options["genome_index"] = self._genome_index
+
         return self._designer_factory(
             self.sequence_file,
             self.coordinates_file,
             self.synonyms_file,
-            precomputed_folder=self.precomputed_folder,
-            verbose=self.designer_verbose,
+            **options,
         )
+
+    @property
+    def genome_index(self):
+        return self._genome_index
+
+    def _remember_genome_index(self, designer):
+        genome_index = getattr(designer, "genome_index", None)
+        if genome_index is not None:
+            self._genome_index = genome_index
