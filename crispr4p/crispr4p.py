@@ -15,6 +15,7 @@ if __package__:
         load_or_compute,
     )
     from .design import TableSorting, run_design_query
+    from .coordinates import indexed_hit_coordinates
     from .genome import GenomePamIndex
     from .guides import (
         build_guide_primer_tuple,
@@ -41,6 +42,7 @@ else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
         load_or_compute,
     )
     from design import TableSorting, run_design_query
+    from coordinates import indexed_hit_coordinates
     from genome import GenomePamIndex
     from guides import (
         build_guide_primer_tuple,
@@ -303,29 +305,13 @@ class PrimerDesign:
                 'Chromosome "%s" not found for oligo hit' % ngg.chromosome
             )
 
-        if ngg.strand == 1:
-            # pos is the 0-based first G/A of the matched GG/AG dinucleotide;
-            # the complete NRG PAM begins one base earlier.
-            pam_start = ngg.pos
-            pam_end = ngg.pos + 2
-            cut_left = pam_start - 4
-        elif ngg.strand == -1:
-            # pos is measured in the reverse-complement sequence. Convert the
-            # inclusive three-base PAM back to forward-reference coordinates.
-            chromosome_length = len(chromosome.sequence)
-            pam_start = chromosome_length - ngg.pos - 1
-            pam_end = chromosome_length - ngg.pos + 1
-            cut_left = pam_end + 3
-        else:
-            raise ValueError("Oligo hit strand must be 1 or -1")
-
-        reference_pam = chromosome.sequence[pam_start - 1:pam_end]
-        if ngg.strand == -1:
-            reference_pam = self.reverseComplement(reference_pam)
-        if reference_pam != ngg.pam:
-            raise ValueError("Normalized PAM coordinates do not match the FASTA")
-
-        return (pam_start, pam_end), (cut_left, cut_left + 1)
+        return indexed_hit_coordinates(
+            ngg.pos,
+            ngg.strand,
+            ngg.pam,
+            chromosome.sequence,
+            self.reverseComplement,
+        )
 
     @staticmethod
     def genomeCompare(g1, g2, nmismatch):
