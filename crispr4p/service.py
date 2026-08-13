@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 
 from .crispr4p import NGG, PrimerDesign
+from .guides import build_suffix_match_table
 from .models import DesignResult, OligoAnalysisResult, OligoMatch
 from .spedit import has_internal_bsai_site, make_spedit_oligos
 
@@ -118,8 +119,9 @@ class Crispr4pService:
             seed=seed,
             pam=pam,
         )
-        _, legacy_matches = designer._single_table_worker(
+        _, legacy_matches = build_suffix_match_table(
             query,
+            designer.NGGs,
             n_mismatch,
         )
 

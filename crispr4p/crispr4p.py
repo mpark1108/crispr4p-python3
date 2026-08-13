@@ -13,6 +13,7 @@ from primer3 import bindings as primer3
 
 if __package__:
     from .genome import GenomePamIndex
+    from .guides import build_suffix_match_table, sequences_match
     from .resources import (
         AnnotationParser,
         ReferenceResources,
@@ -21,6 +22,7 @@ if __package__:
     )
 else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
     from genome import GenomePamIndex
+    from guides import build_suffix_match_table, sequences_match
     from resources import (
         AnnotationParser,
         ReferenceResources,
@@ -366,10 +368,7 @@ class PrimerDesign:
 
     @staticmethod
     def genomeCompare(g1, g2, nmismatch):
-        if nmismatch == 0:
-            return g1 == g2
-        oo = len([x for x in range(len(g1)) if g1[x] != g2[x]])
-        return nmismatch >= oo
+        return sequences_match(g1, g2, nmismatch)
 
     def _gRNA_Table_Worker(self, readDataQueue, storeDataQueue, nMismatch):
         '''
@@ -386,21 +385,7 @@ class PrimerDesign:
             storeDataQueue.put(self._single_table_worker(userNGG, nMismatch))
 
     def _single_table_worker(self, userNGG, nMismatch):
-        index_8 = userNGG.seed[-8:]
-        # Copy the immutable index bucket into the legacy per-query list.
-        genomeNGG = list(self.NGGs.get(index_8, ()))
-        tableDict = {8: genomeNGG}
-
-        for it in range(10, 21, 2):
-            auxNMismatch = nMismatch if it > 8 else 0
-            remainingGenomeNGG = []
-            for auxGenomeNGG in genomeNGG:
-                # todo: ignore comparison with itself, start + ngg pos
-                if PrimerDesign.genomeCompare(userNGG.seed[-it:], auxGenomeNGG.seed[-it:], auxNMismatch):
-                    remainingGenomeNGG.append(auxGenomeNGG)
-            genomeNGG = list(set(remainingGenomeNGG))
-            tableDict[it] = genomeNGG
-        return userNGG, tableDict
+        return build_suffix_match_table(userNGG, self.NGGs, nMismatch)
 
     def gRNA_Table(self, nMismatch):
         '''

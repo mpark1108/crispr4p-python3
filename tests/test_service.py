@@ -1,7 +1,8 @@
 import unittest
 from pathlib import Path
-from types import SimpleNamespace
+from unittest.mock import patch
 
+from crispr4p.guides import build_suffix_match_table
 from crispr4p.models import DesignResult, OligoAnalysisResult
 from crispr4p.service import Crispr4pService, OligoLengthError
 
@@ -18,6 +19,14 @@ LEGACY_RESULT = (
 GUIDE = "ACATTGGCTTACGACGGTCG"
 
 
+class RecordingHit:
+    def __init__(self, chromosome, strand, seed, pam):
+        self.chromosome = chromosome
+        self.strand = strand
+        self.seed = seed
+        self.pam = pam
+
+
 class RecordingDesigner:
     instances = []
 
@@ -26,7 +35,6 @@ class RecordingDesigner:
         self.constructor_kwargs = kwargs
         self.run_web_calls = []
         self.index_calls = 0
-        self.oligo_calls = []
         self.genome_index = kwargs.get("genome_index")
         self.reference_resources = kwargs.get("reference_resources")
         if self.reference_resources is None:
@@ -41,25 +49,14 @@ class RecordingDesigner:
         self.index_calls += 1
         if self.genome_index is None:
             self.genome_index = object()
-        return self.genome_index
-
-    def _single_table_worker(self, query, n_mismatch):
-        self.oligo_calls.append((query, n_mismatch))
-        hit = SimpleNamespace(
+        hit = RecordingHit(
             chromosome="III",
             strand=1,
             seed=GUIDE,
             pam="TGG",
         )
-        return query, {
-            8: [hit] * 5,
-            10: [hit],
-            12: [hit],
-            14: [hit],
-            16: [hit],
-            18: [hit],
-            20: [hit],
-        }
+        self.NGGs = {GUIDE[-8:]: [hit] * 5}
+        return self.genome_index
 
     def getOligoHitCoordinates(self, match):
         return (1316795, 1316797), (1316791, 1316792)
@@ -196,10 +193,14 @@ class TestCrispr4pService(unittest.TestCase):
         )
 
     def test_oligo_analysis_returns_structured_existing_results(self) -> None:
-        result = self.service.analyze_oligo(
-            f"  {GUIDE.lower()}  ",
-            n_mismatch=1,
-        )
+        with patch(
+            "crispr4p.service.build_suffix_match_table",
+            wraps=build_suffix_match_table,
+        ) as matcher:
+            result = self.service.analyze_oligo(
+                f"  {GUIDE.lower()}  ",
+                n_mismatch=1,
+            )
 
         self.assertIsInstance(result, OligoAnalysisResult)
         self.assertEqual(GUIDE, result.oligo_sequence)
@@ -220,9 +221,10 @@ class TestCrispr4pService(unittest.TestCase):
         )
         designer = RecordingDesigner.instances[0]
         self.assertEqual(1, designer.index_calls)
-        query, n_mismatch = designer.oligo_calls[0]
+        query, genome_hits, n_mismatch = matcher.call_args.args
         self.assertEqual(GUIDE, query.seed)
         self.assertEqual("NGG", query.pam)
+        self.assertIs(designer.NGGs, genome_hits)
         self.assertEqual(1, n_mismatch)
 
     def test_oligo_analysis_preserves_supplied_pam(self) -> None:
