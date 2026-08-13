@@ -1,6 +1,7 @@
 import hashlib
 import unittest
 
+from crispr4p.cli import format_design_result, format_oligo_result
 from crispr4p.service import Crispr4pService
 from crispr4p.web_views import render_oligo_result
 
@@ -47,6 +48,20 @@ class TestServiceIntegration(unittest.TestCase):
         self.assertEqual(
             [5, 1, 1, 1, 1, 1, 1],
             self.design_result.guide_table[0][2:],
+        )
+
+    def test_real_cli_result_bodies_are_byte_for_byte_compatible(self) -> None:
+        self.assertEqual(
+            "92d5e997a3e070d33ed09f45c3d77151bfb215d5bdfbdc2aa4d6f8ea1ef14c20",
+            hashlib.sha256(
+                format_design_result(self.design_result).encode("utf-8")
+            ).hexdigest(),
+        )
+        self.assertEqual(
+            "74fa7e168045e969add6b88b2999025f60099aaf96911afac9a3b26c3968c53f",
+            hashlib.sha256(
+                format_oligo_result(self.result).encode("utf-8")
+            ).hexdigest(),
         )
 
 

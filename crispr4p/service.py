@@ -22,6 +22,16 @@ class OligoLengthError(ValueError):
         )
 
 
+def normalize_oligo_query(oligo_sequence):
+    """Normalize a 20-nt seed or a 23-nt seed-plus-PAM query."""
+    normalized_sequence = oligo_sequence.upper().strip()
+    if len(normalized_sequence) == 20:
+        return normalized_sequence, normalized_sequence, "NGG"
+    if len(normalized_sequence) == 23:
+        return normalized_sequence, normalized_sequence[:20], normalized_sequence[20:]
+    raise OligoLengthError(len(normalized_sequence))
+
+
 class Crispr4pService:
     """Delegate design requests to a fresh legacy engine instance.
 
@@ -36,18 +46,21 @@ class Crispr4pService:
         synonyms_file,
         precomputed_folder="precomputed",
         designer_factory=PrimerDesign,
+        designer_verbose=False,
     ):
         self.sequence_file = os.fspath(sequence_file)
         self.coordinates_file = os.fspath(coordinates_file)
         self.synonyms_file = os.fspath(synonyms_file)
         self.precomputed_folder = os.fspath(precomputed_folder)
         self._designer_factory = designer_factory
+        self.designer_verbose = designer_verbose
 
     @classmethod
     def from_project_data(
         cls,
         precomputed_folder="precomputed",
         designer_factory=PrimerDesign,
+        designer_verbose=False,
     ):
         """Create a service using the reference files shipped with CRISPR4P."""
         return cls(
@@ -57,6 +70,7 @@ class Crispr4pService:
             PROJECT_DATA_DIRECTORY / "SYNONIMS.txt",
             precomputed_folder=precomputed_folder,
             designer_factory=designer_factory,
+            designer_verbose=designer_verbose,
         )
 
     def design_gene(self, name, n_mismatch=0):
@@ -82,15 +96,7 @@ class Crispr4pService:
 
     def analyze_oligo(self, oligo_sequence, n_mismatch=0):
         """Analyze a 20-nt seed or 23-nt seed-plus-PAM genome-wide."""
-        normalized_sequence = oligo_sequence.upper().strip()
-        if len(normalized_sequence) == 20:
-            seed = normalized_sequence
-            pam = "NGG"
-        elif len(normalized_sequence) == 23:
-            seed = normalized_sequence[:20]
-            pam = normalized_sequence[20:]
-        else:
-            raise OligoLengthError(len(normalized_sequence))
+        normalized_sequence, seed, pam = normalize_oligo_query(oligo_sequence)
 
         spedit_forward, spedit_reverse = make_spedit_oligos(seed)
         designer = self._new_designer()
@@ -169,4 +175,5 @@ class Crispr4pService:
             self.coordinates_file,
             self.synonyms_file,
             precomputed_folder=self.precomputed_folder,
+            verbose=self.designer_verbose,
         )

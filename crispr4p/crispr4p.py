@@ -156,7 +156,6 @@ class PrimerDesign:
     complements = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
 
     def __init__(self, sequenceFile, coordinates, synomins, verbose=False, precomputed_folder=PRECOMPUTED, regression=False):
-        self.argumentParser()
         self.sequenceFile_ = sequenceFile
         self.chromosomesData = self.readsequence(self.sequenceFile_)
         self._numAlternativeCheckings = 2
@@ -183,6 +182,8 @@ class PrimerDesign:
         self.argp_.add_argument('--oligo', action='store', type=str, help='Oligo/sgRNA sequence (20bp seed or 23bp seed+PAM) to analyze.')
 
     def parseArgs(self, localArgs):
+        if not hasattr(self, 'argp_'):
+            self.argumentParser()
         self.argsList_ = self.argp_.parse_args(localArgs)
 
         if self.argsList_.oligo:
@@ -642,6 +643,9 @@ class PrimerDesign:
         Run from Command line
             :param localArgs: list of strings
         '''
+        # Compatibility entry point for existing callers. Normal CLI parsing
+        # now lives in crispr4p.cli, so construct this legacy parser lazily.
+        self.argumentParser()
         self.argsList_ = self.argp_.parse_args(localArgs)
         
         if self.argsList_.oligo:
@@ -731,10 +735,13 @@ class PrimerDesign:
 
 
 if __name__ == "__main__":
+    # Preserve direct ``python crispr4p/crispr4p.py`` invocation while the
+    # canonical CLI lives outside the scientific implementation module.
+    if not __package__:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
 
-    starttime = time.time()
+    from crispr4p.cli import main
 
-    pd = PrimerDesign(FASTA, COORDINATES, SYNONIMS, verbose=True)
-    pd.runCL(sys.argv[1:])
-
-    print('run time', time.time()-starttime)
+    raise SystemExit(main(sys.argv[1:]))

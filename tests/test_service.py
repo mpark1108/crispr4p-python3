@@ -82,7 +82,10 @@ class TestCrispr4pService(unittest.TestCase):
             designer.constructor_args,
         )
         self.assertEqual(
-            {"precomputed_folder": "cache"},
+            {
+                "precomputed_folder": "cache",
+                "verbose": False,
+            },
             designer.constructor_kwargs,
         )
         self.assertEqual(
