@@ -1,11 +1,36 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
-from crispr4p.models import DesignResult, OligoAnalysisResult, OligoMatch
+from crispr4p.models import (
+    DesignResult,
+    GuideCandidate,
+    OligoAnalysisResult,
+    OligoMatch,
+)
 
 
 LEGACY_RESULT = (
     [["guide"]],
+    ("forward", "reverse", "deleted"),
+    [{"primer": "checking"}],
+    "ade6",
+    "III",
+    "1316337",
+    "1317995",
+)
+
+GUIDE = "ACATTGGCTTACGACGGTCG"
+GUIDE_PRIMER = (
+    GUIDE,
+    "ACGACGGTCGgttttagagctagaaatagcaagttaaaataa",
+    "AAGCCAATGTttcttcggtacaggttatgttttttggcaaca",
+    (1316795, 1316797),
+    1,
+    "TGG",
+)
+GUIDE_ROW = [GUIDE, GUIDE_PRIMER, 5, 1, 1, 1, 1, 1, 1]
+VALID_LEGACY_RESULT = (
+    [GUIDE_ROW],
     ("forward", "reverse", "deleted"),
     [{"primer": "checking"}],
     "ade6",
@@ -45,6 +70,47 @@ class TestDesignResult(unittest.TestCase):
     def test_rejects_wrong_legacy_tuple_length(self) -> None:
         with self.assertRaisesRegex(ValueError, "seven items"):
             DesignResult.from_legacy(LEGACY_RESULT[:-1])
+
+    def test_exposes_immutable_named_guide_candidates(self) -> None:
+        result = DesignResult.from_legacy(VALID_LEGACY_RESULT)
+
+        self.assertIsInstance(result.guides, tuple)
+        self.assertEqual(1, len(result.guides))
+        guide = result.guides[0]
+        self.assertIsInstance(guide, GuideCandidate)
+        self.assertEqual("III", guide.chromosome)
+        self.assertEqual(GUIDE, guide.seed)
+        self.assertEqual(GUIDE_PRIMER[1], guide.forward_cloning_oligo)
+        self.assertEqual(GUIDE_PRIMER[2], guide.reverse_cloning_oligo)
+        self.assertEqual((1316795, 1316797), guide.pam_coordinates)
+        self.assertEqual((1316791, 1316792), guide.cut_coordinates)
+        self.assertEqual(1, guide.strand)
+        self.assertEqual("TGG", guide.pam)
+        self.assertEqual(
+            {8: 5, 10: 1, 12: 1, 14: 1, 16: 1, 18: 1, 20: 1},
+            dict(guide.match_counts),
+        )
+        self.assertIs(GUIDE_ROW, guide.to_legacy())
+        with self.assertRaises(TypeError):
+            guide.match_counts[8] = 99
+
+    def test_typed_guides_are_a_snapshot_of_mutable_legacy_rows(self) -> None:
+        local_row = list(GUIDE_ROW)
+        legacy_result = (local_row,), *VALID_LEGACY_RESULT[1:]
+        result = DesignResult.from_legacy(legacy_result)
+        guide = result.guides[0]
+
+        local_row[2] = 99
+
+        self.assertEqual(5, guide.match_counts[8])
+        self.assertEqual(99, result.guide_table[0][2])
+
+    def test_malformed_nested_rows_remain_accepted_until_typed_access(self):
+        result = DesignResult.from_legacy(LEGACY_RESULT)
+
+        self.assertIs(LEGACY_RESULT, result.to_legacy())
+        with self.assertRaisesRegex(ValueError, "nine items"):
+            _ = result.guides
 
 
 class TestOligoAnalysisResult(unittest.TestCase):

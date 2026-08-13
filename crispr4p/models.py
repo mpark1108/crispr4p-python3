@@ -4,14 +4,81 @@ from dataclasses import dataclass, field
 from types import MappingProxyType
 from typing import Any, Mapping
 
+from .coordinates import cas9_cut_boundary_from_pam
+from .guides import SUFFIX_LENGTHS
+
+
+@dataclass(frozen=True)
+class GuideCandidate:
+    """Immutable scientific view of one legacy design-result guide row."""
+
+    chromosome: str
+    seed: str
+    forward_cloning_oligo: str
+    reverse_cloning_oligo: str
+    pam_coordinates: tuple[int, int]
+    cut_coordinates: tuple[int, int]
+    strand: int
+    pam: str
+    match_counts: Mapping[int, int]
+    _legacy_row: Any = field(repr=False, compare=False)
+
+    @classmethod
+    def from_legacy_row(cls, legacy_row, chromosome):
+        """Snapshot one historical nine-item guide-table row."""
+        if not isinstance(legacy_row, (list, tuple)):
+            raise TypeError("legacy guide row must be a list or tuple")
+        if len(legacy_row) != 9:
+            raise ValueError("legacy guide row must contain nine items")
+
+        primer = legacy_row[1]
+        if not isinstance(primer, (list, tuple)):
+            raise TypeError("legacy guide primer must be a list or tuple")
+        if len(primer) != 6:
+            raise ValueError("legacy guide primer must contain six items")
+
+        pam_coordinates = tuple(primer[3])
+        strand = primer[4]
+        return cls(
+            chromosome=chromosome,
+            seed=legacy_row[0],
+            forward_cloning_oligo=primer[1],
+            reverse_cloning_oligo=primer[2],
+            pam_coordinates=pam_coordinates,
+            cut_coordinates=cas9_cut_boundary_from_pam(
+                pam_coordinates[0],
+                pam_coordinates[1],
+                strand,
+            ),
+            strand=strand,
+            pam=primer[5],
+            match_counts={
+                length: count
+                for length, count in zip(SUFFIX_LENGTHS, legacy_row[2:])
+            },
+            _legacy_row=legacy_row,
+        )
+
+    def __post_init__(self):
+        object.__setattr__(self, "pam_coordinates", tuple(self.pam_coordinates))
+        object.__setattr__(self, "cut_coordinates", tuple(self.cut_coordinates))
+        object.__setattr__(
+            self,
+            "match_counts",
+            MappingProxyType(dict(self.match_counts)),
+        )
+
+    def to_legacy(self):
+        """Return the exact original row used by existing renderers/caches."""
+        return self._legacy_row
+
 
 @dataclass(frozen=True)
 class DesignResult:
     """Named top-level fields from a CRISPR4P region-design operation.
 
-    Nested values deliberately remain in their legacy forms during this
-    checkpoint. Keeping the original tuple lets existing consumers recover
-    the exact positional layout without copying or reordering its contents.
+    Legacy nested values and object identities remain available for existing
+    consumers, while ``guides`` provides immutable named scientific records.
     """
 
     guide_table: Any
@@ -22,6 +89,11 @@ class DesignResult:
     start: Any
     end: Any
     _legacy_result: tuple = field(repr=False, compare=False)
+    _guide_candidates: tuple[GuideCandidate, ...] | None = field(
+        default=None,
+        repr=False,
+        compare=False,
+    )
 
     @classmethod
     def from_legacy(cls, legacy_result):
@@ -30,6 +102,16 @@ class DesignResult:
             raise TypeError("legacy design result must be a tuple")
         if len(legacy_result) != 7:
             raise ValueError("legacy design result must contain seven items")
+
+        try:
+            guide_candidates = tuple(
+                GuideCandidate.from_legacy_row(row, legacy_result[4])
+                for row in legacy_result[0]
+            )
+        except (IndexError, TypeError, ValueError):
+            # Preserve acceptance of historically unchecked nested values.
+            # Accessing ``guides`` will still report the malformed row.
+            guide_candidates = None
 
         return cls(
             guide_table=legacy_result[0],
@@ -40,6 +122,17 @@ class DesignResult:
             start=legacy_result[5],
             end=legacy_result[6],
             _legacy_result=legacy_result,
+            _guide_candidates=guide_candidates,
+        )
+
+    @property
+    def guides(self):
+        """Return immutable, named guide candidates for scientific consumers."""
+        if self._guide_candidates is not None:
+            return self._guide_candidates
+        return tuple(
+            GuideCandidate.from_legacy_row(row, self.chromosome)
+            for row in self.guide_table
         )
 
     def to_legacy(self):

@@ -53,6 +53,25 @@ class TestServiceIntegration(unittest.TestCase):
             self.design_result.guide_table[0][2:],
         )
 
+    def test_real_ade6_design_exposes_typed_guide_candidates(self) -> None:
+        self.assertEqual(144, len(self.design_result.guides))
+        guide = self.design_result.guides[0]
+
+        self.assertEqual("III", guide.chromosome)
+        self.assertEqual(GUIDE, guide.seed)
+        self.assertEqual((1316795, 1316797), guide.pam_coordinates)
+        self.assertEqual((1316791, 1316792), guide.cut_coordinates)
+        self.assertEqual(1, guide.strand)
+        self.assertEqual("TGG", guide.pam)
+        self.assertEqual(
+            {8: 5, 10: 1, 12: 1, 14: 1, 16: 1, 18: 1, 20: 1},
+            dict(guide.match_counts),
+        )
+        self.assertIs(
+            self.design_result.guide_table[0],
+            guide.to_legacy(),
+        )
+
     def test_real_cli_result_bodies_are_byte_for_byte_compatible(self) -> None:
         self.assertEqual(
             "92d5e997a3e070d33ed09f45c3d77151bfb215d5bdfbdc2aa4d6f8ea1ef14c20",
