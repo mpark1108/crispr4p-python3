@@ -1,7 +1,7 @@
 import unittest
 from dataclasses import FrozenInstanceError
 
-from crispr4p.models import DesignResult
+from crispr4p.models import DesignResult, OligoAnalysisResult, OligoMatch
 
 
 LEGACY_RESULT = (
@@ -45,6 +45,45 @@ class TestDesignResult(unittest.TestCase):
     def test_rejects_wrong_legacy_tuple_length(self) -> None:
         with self.assertRaisesRegex(ValueError, "seven items"):
             DesignResult.from_legacy(LEGACY_RESULT[:-1])
+
+
+class TestOligoAnalysisResult(unittest.TestCase):
+    def make_result(self):
+        return OligoAnalysisResult(
+            oligo_sequence="ACATTGGCTTACGACGGTCG",
+            seed="ACATTGGCTTACGACGGTCG",
+            pam="NGG",
+            n_mismatch=0,
+            spedit_forward="forward",
+            spedit_reverse="reverse",
+            has_internal_bsai=False,
+            match_counts={8: 5, 20: 1},
+            full_matches=[
+                OligoMatch(
+                    chromosome="III",
+                    pam_coordinates=[1316795, 1316797],
+                    cut_coordinates=[1316791, 1316792],
+                    strand=1,
+                    seed="ACATTGGCTTACGACGGTCG",
+                    pam="TGG",
+                )
+            ],
+        )
+
+    def test_nested_collections_are_immutable_snapshots(self) -> None:
+        result = self.make_result()
+
+        self.assertIsInstance(result.full_matches, tuple)
+        self.assertEqual((1316795, 1316797), result.full_matches[0].pam_coordinates)
+        self.assertEqual((1316791, 1316792), result.full_matches[0].cut_coordinates)
+        with self.assertRaises(TypeError):
+            result.match_counts[8] = 99
+
+    def test_top_level_result_is_immutable(self) -> None:
+        result = self.make_result()
+
+        with self.assertRaises(FrozenInstanceError):
+            result.seed = "A" * 20
 
 
 if __name__ == "__main__":

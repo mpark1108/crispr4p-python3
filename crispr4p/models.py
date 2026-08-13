@@ -1,7 +1,8 @@
 """Structured application results with explicit legacy compatibility."""
 
 from dataclasses import dataclass, field
-from typing import Any
+from types import MappingProxyType
+from typing import Any, Mapping
 
 
 @dataclass(frozen=True)
@@ -44,3 +45,42 @@ class DesignResult:
     def to_legacy(self):
         """Return the original seven-item tuple used by legacy consumers."""
         return self._legacy_result
+
+
+@dataclass(frozen=True)
+class OligoMatch:
+    """One full-length genomic match for an oligo query."""
+
+    chromosome: str
+    pam_coordinates: tuple[int, int]
+    cut_coordinates: tuple[int, int]
+    strand: int
+    seed: str
+    pam: str
+
+    def __post_init__(self):
+        object.__setattr__(self, "pam_coordinates", tuple(self.pam_coordinates))
+        object.__setattr__(self, "cut_coordinates", tuple(self.cut_coordinates))
+
+
+@dataclass(frozen=True)
+class OligoAnalysisResult:
+    """Structured, immutable summary of a genome-wide oligo analysis."""
+
+    oligo_sequence: str
+    seed: str
+    pam: str
+    n_mismatch: int
+    spedit_forward: str
+    spedit_reverse: str
+    has_internal_bsai: bool
+    match_counts: Mapping[int, int]
+    full_matches: tuple[OligoMatch, ...]
+
+    def __post_init__(self):
+        object.__setattr__(
+            self,
+            "match_counts",
+            MappingProxyType(dict(self.match_counts)),
+        )
+        object.__setattr__(self, "full_matches", tuple(self.full_matches))

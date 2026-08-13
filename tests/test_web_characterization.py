@@ -2,11 +2,11 @@ import hashlib
 import unittest
 import urllib.parse
 from io import BytesIO
-from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import webapp
-from crispr4p.crispr4p import NGG
+from crispr4p.models import DesignResult, OligoAnalysisResult, OligoMatch
+from crispr4p.service import OligoLengthError
 
 
 GUIDE = "ACATTGGCTTACGACGGTCG"
@@ -18,30 +18,6 @@ SPEDIT_FORWARD = (
 def make_handler():
     """Construct a handler without opening a network socket."""
     return webapp.CRISPR4PHandler.__new__(webapp.CRISPR4PHandler)
-
-
-class FakeOligoDesigner:
-    hit = NGG("III", 0, 1, GUIDE, "TGG")
-
-    def __init__(self, *args, **kwargs):
-        self.NGGs = None
-
-    def getNGGsFromGenome(self):
-        self.NGGs = {}
-
-    def _single_table_worker(self, query, mismatches):
-        return query, {
-            8: [self.hit] * 5,
-            10: [self.hit],
-            12: [self.hit],
-            14: [self.hit],
-            16: [self.hit],
-            18: [self.hit],
-            20: [self.hit],
-        }
-
-    def getOligoHitCoordinates(self, hit):
-        return (1316795, 1316797), (1316791, 1316792)
 
 
 PRIMER_TUPLE = (
@@ -64,35 +40,51 @@ CHECKING_PRIMERS = [
         "negative_result": 1913,
     }
 ]
-
-
-class FakeDesignPrimerDesign:
-    def __init__(self, *args, **kwargs):
-        pass
-
-    def runWeb(self, *args, **kwargs):
-        return (
-            DESIGN_TABLE,
-            HR_DNA,
-            CHECKING_PRIMERS,
-            "ade6",
-            "III",
-            "1316337",
-            "1317995",
+DESIGN_RESULT = DesignResult.from_legacy(
+    (
+        DESIGN_TABLE,
+        HR_DNA,
+        CHECKING_PRIMERS,
+        "ade6",
+        "III",
+        "1316337",
+        "1317995",
+    )
+)
+OLIGO_RESULT = OligoAnalysisResult(
+    oligo_sequence=GUIDE,
+    seed=GUIDE,
+    pam="NGG",
+    n_mismatch=0,
+    spedit_forward=SPEDIT_FORWARD,
+    spedit_reverse=(
+        "GGAAGGGTCTCGAAACCGACCGTCGTAAGCCAATGTAGTCCGAGACCTCTAG"
+    ),
+    has_internal_bsai=False,
+    match_counts={8: 5, 10: 1, 12: 1, 14: 1, 16: 1, 18: 1, 20: 1},
+    full_matches=[
+        OligoMatch(
+            chromosome="III",
+            pam_coordinates=(1316795, 1316797),
+            cut_coordinates=(1316791, 1316792),
+            strand=1,
+            seed=GUIDE,
+            pam="TGG",
         )
+    ],
+)
 
 
 class TestWebRenderingCharacterization(unittest.TestCase):
     def test_oligo_result_html_is_unchanged(self) -> None:
         handler = make_handler()
-        fake_crp = SimpleNamespace(
-            PrimerDesign=FakeOligoDesigner,
-            NGG=NGG,
-        )
+        service = Mock()
+        service.analyze_oligo.return_value = OLIGO_RESULT
 
-        with patch.object(webapp, "crp", fake_crp):
+        with patch.object(webapp, "create_service", return_value=service):
             result = handler.run_oligo_model(GUIDE, 0)
 
+        service.analyze_oligo.assert_called_once_with(GUIDE, n_mismatch=0)
         self.assertEqual(
             "dd389db45eaca6b3babe396638609b0752b865f5638c14c32aa6c0e7e4c4082e",
             hashlib.sha256(result.encode("utf-8")).hexdigest(),
@@ -105,11 +97,14 @@ class TestWebRenderingCharacterization(unittest.TestCase):
 
     def test_design_result_html_is_unchanged(self) -> None:
         handler = make_handler()
-        fake_crp = SimpleNamespace(PrimerDesign=FakeDesignPrimerDesign)
+        service = Mock()
+        service.design_gene.return_value = DESIGN_RESULT
 
-        with patch.object(webapp, "crp", fake_crp):
+        with patch.object(webapp, "create_service", return_value=service):
             result = handler.run_design_model("ade6", None, None, None)
 
+        service.design_gene.assert_called_once_with("ade6", n_mismatch=0)
+        service.design_region.assert_not_called()
         self.assertEqual(
             "93376b12610f2f10077b8c7b6bd80992a0d9cb65fdb93aed927026330e11ea3a",
             hashlib.sha256(result.encode("utf-8")).hexdigest(),
@@ -121,6 +116,36 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         self.assertIn("59 &deg;C", result)
         self.assertIn("255 (bp)", result)
         self.assertIn(SPEDIT_FORWARD, result)
+
+    def test_coordinate_design_uses_region_service_operation(self) -> None:
+        handler = make_handler()
+        service = Mock()
+        service.design_region.return_value = DESIGN_RESULT
+
+        with patch.object(webapp, "create_service", return_value=service):
+            handler.run_design_model(None, "III", "1316337", "1317995")
+
+        service.design_region.assert_called_once_with(
+            "III",
+            "1316337",
+            "1317995",
+            n_mismatch=0,
+        )
+        service.design_gene.assert_not_called()
+
+    def test_oligo_length_error_keeps_existing_html(self) -> None:
+        handler = make_handler()
+        service = Mock()
+        service.analyze_oligo.side_effect = OligoLengthError(19)
+
+        with patch.object(webapp, "create_service", return_value=service):
+            result = handler.run_oligo_model("A" * 19, 0)
+
+        self.assertEqual(
+            '<font color="red"><h3>Error: Oligo sequence must be 20 bp '
+            '(seed only) or 23 bp (seed + PAM). Current length: 19</h3></font>',
+            result,
+        )
 
 
 class TestHttpPostCharacterization(unittest.TestCase):

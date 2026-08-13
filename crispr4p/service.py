@@ -3,11 +3,23 @@
 import os
 from pathlib import Path
 
-from .crispr4p import PrimerDesign
-from .models import DesignResult
+from .crispr4p import NGG, PrimerDesign
+from .models import DesignResult, OligoAnalysisResult, OligoMatch
+from .spedit import has_internal_bsai_site, make_spedit_oligos
 
 
 PROJECT_DATA_DIRECTORY = Path(__file__).resolve().parent.parent / "data"
+
+
+class OligoLengthError(ValueError):
+    """Raised when an oligo is neither a 20-nt seed nor seed plus PAM."""
+
+    def __init__(self, sequence_length):
+        self.sequence_length = sequence_length
+        super().__init__(
+            "Oligo sequence must be 20 bp (seed only) or 23 bp "
+            f"(seed + PAM). Received length: {sequence_length}"
+        )
 
 
 class Crispr4pService:
@@ -68,6 +80,66 @@ class Crispr4pService:
             n_mismatch=n_mismatch,
         )
 
+    def analyze_oligo(self, oligo_sequence, n_mismatch=0):
+        """Analyze a 20-nt seed or 23-nt seed-plus-PAM genome-wide."""
+        normalized_sequence = oligo_sequence.upper().strip()
+        if len(normalized_sequence) == 20:
+            seed = normalized_sequence
+            pam = "NGG"
+        elif len(normalized_sequence) == 23:
+            seed = normalized_sequence[:20]
+            pam = normalized_sequence[20:]
+        else:
+            raise OligoLengthError(len(normalized_sequence))
+
+        spedit_forward, spedit_reverse = make_spedit_oligos(seed)
+        designer = self._new_designer()
+        designer.getNGGsFromGenome()
+
+        query = NGG(
+            chro="query",
+            pos=0,
+            strand=1,
+            seed=seed,
+            pam=pam,
+        )
+        _, legacy_matches = designer._single_table_worker(
+            query,
+            n_mismatch,
+        )
+
+        match_counts = {
+            length: len(legacy_matches.get(length, []))
+            for length in (8, 10, 12, 14, 16, 18, 20)
+        }
+        full_matches = []
+        for match in legacy_matches.get(20, []):
+            pam_coordinates, cut_coordinates = (
+                designer.getOligoHitCoordinates(match)
+            )
+            full_matches.append(
+                OligoMatch(
+                    chromosome=match.chromosome,
+                    pam_coordinates=pam_coordinates,
+                    cut_coordinates=cut_coordinates,
+                    strand=match.strand,
+                    seed=match.seed,
+                    pam=match.pam,
+                )
+            )
+
+        return OligoAnalysisResult(
+            oligo_sequence=normalized_sequence,
+            seed=seed,
+            pam=pam,
+            n_mismatch=n_mismatch,
+            spedit_forward=spedit_forward,
+            spedit_reverse=spedit_reverse,
+            has_internal_bsai=has_internal_bsai_site(seed),
+            match_counts=match_counts,
+            full_matches=full_matches,
+        )
+
     def _run_design(
         self,
         name=None,
@@ -77,14 +149,7 @@ class Crispr4pService:
         strand=None,
         n_mismatch=0,
     ):
-        # PrimerDesign stores query-specific mutable state, so do not reuse an
-        # instance across service calls or concurrent HTTP requests.
-        designer = self._designer_factory(
-            self.sequence_file,
-            self.coordinates_file,
-            self.synonyms_file,
-            precomputed_folder=self.precomputed_folder,
-        )
+        designer = self._new_designer()
         return DesignResult.from_legacy(
             designer.runWeb(
                 name=name,
@@ -94,4 +159,14 @@ class Crispr4pService:
                 strand=strand,
                 nMismatch=n_mismatch,
             )
+        )
+
+    def _new_designer(self):
+        # PrimerDesign stores query-specific mutable state, so do not reuse an
+        # instance across service calls or concurrent HTTP requests.
+        return self._designer_factory(
+            self.sequence_file,
+            self.coordinates_file,
+            self.synonyms_file,
+            precomputed_folder=self.precomputed_folder,
         )

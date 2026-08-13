@@ -6,14 +6,8 @@ import urllib.parse
 import sys
 from http.server import HTTPServer, BaseHTTPRequestHandler
 
-import crispr4p.crispr4p as crp
-from crispr4p.models import DesignResult
-from crispr4p.spedit import (
-    has_internal_bsai_site,
-    make_spedit_oligos,
-)
+from crispr4p.service import Crispr4pService, OligoLengthError
 from crispr4p.web_views import (
-    OligoMatchView,
     build_spedit_candidate_data,
     render_design_result,
     render_execution_error,
@@ -24,6 +18,13 @@ from crispr4p.web_views import (
 
 
 PORT = 8080
+
+
+def create_service():
+    """Create an isolated application service for one web operation."""
+    return Crispr4pService.from_project_data(
+        precomputed_folder="precomputed",
+    )
 
 
 class CRISPR4PHandler(BaseHTTPRequestHandler):
@@ -123,73 +124,27 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
         self.serve_form(result_html)
 
     def run_oligo_model(self, oligo_seq, mismatches):
-        if len(oligo_seq) == 20:
-            seed = oligo_seq
-            pam = "NGG"
-        elif len(oligo_seq) == 23:
-            seed = oligo_seq[:20]
-            pam = oligo_seq[20:]
-        else:
-            return render_oligo_length_error(len(oligo_seq))
-
-        spedit_forward, spedit_reverse = make_spedit_oligos(seed)
-
-        datapath = "data/"
-        FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
-        COORDINATES = datapath + 'COORDINATES.txt'
-        SYNONIMS = datapath + 'SYNONIMS.txt'
-
-        pd = crp.PrimerDesign(FASTA, COORDINATES, SYNONIMS, precomputed_folder='precomputed')
-        pd.getNGGsFromGenome()
-
-        query_ngg = crp.NGG(chro='query', pos=0, strand=1, seed=seed, pam=pam)
-        _, tableDict = pd._single_table_worker(query_ngg, mismatches)
-
-        match_counts = {
-            length: len(tableDict.get(length, []))
-            for length in (8, 10, 12, 14, 16, 18, 20)
-        }
-        full_matches = []
-        for match in tableDict.get(20, []):
-            pam_coordinates, cut_coordinates = pd.getOligoHitCoordinates(match)
-            full_matches.append(
-                OligoMatchView(
-                    chromosome=match.chromosome,
-                    pam_coordinates=pam_coordinates,
-                    cut_coordinates=cut_coordinates,
-                    strand=match.strand,
-                    seed=match.seed,
-                    pam=match.pam,
-                )
+        try:
+            result = create_service().analyze_oligo(
+                oligo_seq,
+                n_mismatch=mismatches,
             )
+        except OligoLengthError as error:
+            return render_oligo_length_error(error.sequence_length)
 
-        return render_oligo_result(
-            oligo_sequence=oligo_seq,
-            seed=seed,
-            mismatches=mismatches,
-            spedit_forward=spedit_forward,
-            spedit_reverse=spedit_reverse,
-            has_internal_bsai=has_internal_bsai_site(seed),
-            match_counts=match_counts,
-            full_matches=full_matches,
-        )
+        return render_oligo_result(result)
 
     def run_design_model(self, name, chromosome, coor_lower, coor_upper):
-        datapath = "data/"
-        FASTA = datapath + 'Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa'
-        COORDINATES = datapath + 'COORDINATES.txt'
-        SYNONIMS = datapath + 'SYNONIMS.txt'
-
-        pd = crp.PrimerDesign(FASTA, COORDINATES, SYNONIMS, precomputed_folder='precomputed')
-        result = DesignResult.from_legacy(
-            pd.runWeb(
-                name,
+        service = create_service()
+        if name is not None:
+            result = service.design_gene(name, n_mismatch=0)
+        else:
+            result = service.design_region(
                 chromosome,
                 coor_lower,
                 coor_upper,
-                nMismatch=0,
+                n_mismatch=0,
             )
-        )
 
         src_path = os.path.dirname(__file__) if os.path.dirname(__file__) else '.'
         with open(os.path.join(src_path, 'template/container_table.html'), 'r', encoding='utf-8') as fh:

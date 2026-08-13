@@ -2,7 +2,7 @@ import hashlib
 import unittest
 from pathlib import Path
 
-from crispr4p.models import DesignResult
+from crispr4p.models import DesignResult, OligoAnalysisResult
 from crispr4p.web_views import (
     OligoMatchView,
     render_design_result,
@@ -47,10 +47,11 @@ class TestErrorViews(unittest.TestCase):
 
 class TestResultViews(unittest.TestCase):
     def test_oligo_renderer_preserves_exact_html(self) -> None:
-        result = render_oligo_result(
+        analysis = OligoAnalysisResult(
             oligo_sequence=GUIDE,
             seed=GUIDE,
-            mismatches=0,
+            pam="NGG",
+            n_mismatch=0,
             spedit_forward=SPEDIT_FORWARD,
             spedit_reverse=SPEDIT_REVERSE,
             has_internal_bsai=False,
@@ -66,6 +67,7 @@ class TestResultViews(unittest.TestCase):
                 )
             ],
         )
+        result = render_oligo_result(analysis)
 
         self.assertEqual(
             "dd389db45eaca6b3babe396638609b0752b865f5638c14c32aa6c0e7e4c4082e",
