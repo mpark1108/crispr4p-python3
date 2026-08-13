@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
 import argparse
-import re
 import os
 import sys
 import time
@@ -13,7 +12,12 @@ from primer3 import bindings as primer3
 
 if __package__:
     from .genome import GenomePamIndex
-    from .guides import build_suffix_match_table, sequences_match
+    from .guides import (
+        build_guide_primer_tuple,
+        build_suffix_match_table,
+        discover_region_guides,
+        sequences_match,
+    )
     from .resources import (
         AnnotationParser,
         ReferenceResources,
@@ -22,7 +26,12 @@ if __package__:
     )
 else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
     from genome import GenomePamIndex
-    from guides import build_suffix_match_table, sequences_match
+    from guides import (
+        build_guide_primer_tuple,
+        build_suffix_match_table,
+        discover_region_guides,
+        sequences_match,
+    )
     from resources import (
         AnnotationParser,
         ReferenceResources,
@@ -211,46 +220,27 @@ class PrimerDesign:
         return True
 
     def _getUserNGGs(self, crFasta, start, end):
-        ##user input NGGs
-        findNGGs = {}
-        for strand, data in {1:crFasta.sequence[start:end+1], -1:self.reverseComplement(crFasta.sequence[start:end+1])}.items():
-            # Use a zero-width lookahead so both GG starts in GGG are tested.
-            # A consuming ``GG`` regex skips the second, overlapping SpCas9
-            # PAM and therefore misses a valid guide.
-            for match in re.finditer(r'(?=GG)', data):
-                pos = match.start()
-                pam = data[pos-1:pos+2]
-                seed = data[pos-SEED_LENGTH-1:pos-1]
-                if seed:
-                    auxfindNGGs = findNGGs.get(seed, [])
-                    auxfindNGGs.append(NGG(crFasta.name, pos, strand, seed, pam))
-                    findNGGs[seed] = auxfindNGGs
-
-        #filter unique values
-        self.userNGGs = [value[0] for value in findNGGs.values() if len(value) == 1]
-
-        assert len(findNGGs) != 0, 'No nGG found in your input'
+        # Clear prior query state even when discovery raises, matching the
+        # historical mutation-before-assertion behavior.
+        self.userNGGs = []
+        self.userNGGs = discover_region_guides(
+            crFasta.sequence,
+            crFasta.name,
+            start,
+            end,
+            hit_factory=NGG,
+            reverse_complement=self.reverseComplement,
+            seed_length=SEED_LENGTH,
+        )
 
     def getPrimerGRNA(self, crFasta, start, end, ngg):
-        #get primers
-        ind = ngg.pos
-        if ngg.strand == 1:
-            startInd = start+1+ind
-            gRNA = crFasta.sequence[startInd-22:startInd-2]
-            pam = crFasta.sequence[startInd-2:startInd+1]
-            pam_start = startInd - 2
-        else:   #strand -1
-            startInd = end-1-ind
-            pam = self.reverseComplement(crFasta.sequence[startInd:startInd+3])
-            gRNA = self.reverseComplement(crFasta.sequence[startInd+3:startInd+23])
-            pam_start = startInd
-        gRNAfw = gRNA[-10:] + 'gttttagagctagaaatagcaagttaaaataa'
-        gRNArv = self.reverseComplement(gRNA[:10]) + 'ttcttcggtacaggttatgttttttggcaaca'
-
-        # Sequence slices above are 0-based and end-exclusive. Report the PAM
-        # to users as a conventional 1-based, inclusive three-base interval.
-        pam_coordinates = (pam_start + 1, pam_start + 3)
-        return gRNA, gRNAfw, gRNArv, pam_coordinates, ngg.strand, pam
+        return build_guide_primer_tuple(
+            crFasta.sequence,
+            start,
+            end,
+            ngg,
+            self.reverseComplement,
+        )
 
     def _genPrecomputedName(self, name, nMismatch, cr, start, end):
         if not os.path.isdir(self.precomputed_folder):
