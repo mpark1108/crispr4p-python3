@@ -4,11 +4,16 @@ import argparse
 import os
 import sys
 import time
-import pickle
 import multiprocessing
 import queue
 
 if __package__:
+    from .cache import (
+        build_cache_path,
+        cache_exists,
+        ensure_cache_directory,
+        load_or_compute,
+    )
     from .genome import GenomePamIndex
     from .guides import (
         build_guide_primer_tuple,
@@ -28,6 +33,12 @@ if __package__:
         design_primers as _design_primers,
     )
 else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
+    from cache import (
+        build_cache_path,
+        cache_exists,
+        ensure_cache_directory,
+        load_or_compute,
+    )
     from genome import GenomePamIndex
     from guides import (
         build_guide_primer_tuple,
@@ -243,23 +254,26 @@ class PrimerDesign:
         )
 
     def _genPrecomputedName(self, name, nMismatch, cr, start, end):
-        if not os.path.isdir(self.precomputed_folder):
-            os.makedirs(self.precomputed_folder)
+        ensure_cache_directory(self.precomputed_folder)
+        systematic_name = None
         if name:
             #use systematic name (SPAC)
-            sistematic_name = [x for x in self.annotationParser_.synonims_ if name in x][0][0]
-            basename = '%s_v%s_n%s.pickle' % (
-                sistematic_name, PRECOMPUTED_VERSION, nMismatch
-            )
-        else:
-            basename = '%s_%s_%s_v%s_n%s.pickle' % (
-                cr, start, end, PRECOMPUTED_VERSION, nMismatch
-            )
-        return os.path.join(self.precomputed_folder, basename)
+            systematic_name = [
+                x for x in self.annotationParser_.synonims_ if name in x
+            ][0][0]
+        return build_cache_path(
+            self.precomputed_folder,
+            PRECOMPUTED_VERSION,
+            nMismatch,
+            cr,
+            start,
+            end,
+            systematic_name=systematic_name,
+        )
 
     @staticmethod
     def _isPrecomputed(precomputedName):
-        if os.path.isfile(precomputedName):
+        if cache_exists(precomputedName):
             return True
 
     def run_(self, chromosome, start, end, nMismatch, name):
@@ -483,28 +497,17 @@ class PrimerDesign:
         '''
         self.checkCoords_(chromosome, start, end)
         precomputedName = self._genPrecomputedName(name, nMismatch, chromosome, start, end)
-        if not self._isPrecomputed(precomputedName):
-            tablePos_grna, hr_dna, primercheck, gRNAs_match = self.run_(chromosome, int(start), int(end), nMismatch, name)
-
-            try:
-                data = pickle.dumps((tablePos_grna, hr_dna, primercheck, gRNAs_match), protocol=-1)
-                with open(precomputedName, 'wb') as fh:
-                    fh.write(data)
-            except Exception as e:
-                # if writing fails, don't show error, will compute it next time
-                if os.path.isfile(precomputedName):
-                    os.remove(precomputedName)
-        else:
-            try:
-                with open(precomputedName, 'rb') as fh:
-                    tablePos_grna, hr_dna, primercheck, gRNAs_match = pickle.load(fh)
-            except Exception as e:
-                # pickle loading failed delete file, next call will store it right.
-                if os.path.isfile(precomputedName):
-                    os.remove(precomputedName)
-                tablePos_grna, hr_dna, primercheck, gRNAs_match = self.run_(chromosome, int(start), int(end), nMismatch, name)
-
-        return tablePos_grna, hr_dna, primercheck, gRNAs_match
+        return load_or_compute(
+            precomputedName,
+            lambda: self.run_(
+                chromosome,
+                int(start),
+                int(end),
+                nMismatch,
+                name,
+            ),
+            self._isPrecomputed,
+        )
 
     def runOligoQuery(self, oligo_seq, nMismatch):
         # 1. Clean input
