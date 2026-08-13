@@ -28,6 +28,9 @@ class RecordingDesigner:
         self.index_calls = 0
         self.oligo_calls = []
         self.genome_index = kwargs.get("genome_index")
+        self.reference_resources = kwargs.get("reference_resources")
+        if self.reference_resources is None:
+            self.reference_resources = object()
         self.__class__.instances.append(self)
 
     def runWeb(self, **kwargs):
@@ -158,6 +161,38 @@ class TestCrispr4pService(unittest.TestCase):
         self.assertIs(
             shared_index,
             RecordingDesigner.instances[3].constructor_kwargs["genome_index"],
+        )
+        shared_resources = RecordingDesigner.instances[0].reference_resources
+        self.assertIs(shared_resources, self.service.reference_resources)
+        for designer in RecordingDesigner.instances[1:]:
+            self.assertIs(
+                shared_resources,
+                designer.constructor_kwargs["reference_resources"],
+            )
+
+    def test_injected_shared_components_are_forwarded(self) -> None:
+        genome_index = object()
+        reference_resources = object()
+        service = Crispr4pService(
+            "genome.fa",
+            "coordinates.txt",
+            "synonyms.txt",
+            designer_factory=RecordingDesigner,
+            genome_index=genome_index,
+            reference_resources=reference_resources,
+        )
+
+        service.design_gene("ade6")
+
+        self.assertIs(
+            genome_index,
+            RecordingDesigner.instances[0].constructor_kwargs["genome_index"],
+        )
+        self.assertIs(
+            reference_resources,
+            RecordingDesigner.instances[0].constructor_kwargs[
+                "reference_resources"
+            ],
         )
 
     def test_oligo_analysis_returns_structured_existing_results(self) -> None:

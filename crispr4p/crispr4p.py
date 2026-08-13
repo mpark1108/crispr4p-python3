@@ -13,8 +13,20 @@ from primer3 import bindings as primer3
 
 if __package__:
     from .genome import GenomePamIndex
+    from .resources import (
+        AnnotationParser,
+        ReferenceResources,
+        chromosomeFasta,
+        read_fasta,
+    )
 else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
     from genome import GenomePamIndex
+    from resources import (
+        AnnotationParser,
+        ReferenceResources,
+        chromosomeFasta,
+        read_fasta,
+    )
 
 datapath = os.path.join(os.path.dirname(__file__), "../data/")
 
@@ -92,56 +104,6 @@ class CPU_RAM:
         # return multiprocessing.cpu_count()*3/4
 
 
-class chromosomeFasta():
-    '''
-    Reads FASTA chromosome and parses it.
-    '''
-    def __init__(self, data):
-        data = data.split('\n')
-        self.header = data[0]
-        self.sequence = ''.join(data[1:])
-        self.name = self.header[:self.header.index(' ')]
-
-    def __str__(self):
-        return ' '.join(['chromosome:', self.name, 'Length:', str(len(self.sequence)), 'Header:', self.header])
-
-
-class AnnotationParser:
-    def __init__(self, coordinates_txt, synonims_txt):
-        self.coordinates_ = self.readCoordinates_(coordinates_txt)
-        self.synonims_ = self.readSynonims_(synonims_txt)
-
-    def readCoordinates_(self, coordinates_txt):
-        with open(coordinates_txt, 'r', encoding='utf-8') as f:
-            data = [x.rstrip() for x in f.readlines()][1:]
-        return [x.split('\t') for x in data]
-
-    def readSynonims_(self, synonims_txt):
-        with open(synonims_txt, 'r', encoding='utf-8') as f:
-            data = [x.rstrip() for x in f.readlines()][2:]
-        data = [x.split('\t') for x in data]
-        return [[y for y in x if y] for x in data]
-
-    def normalize_name(self, name):
-        name = name.upper().strip()
-        if not any(x[0] == name for x in self.coordinates_):
-            name = name.lower()
-        return name
-
-    def getCoordsFromName(self, name):
-        input_name = name
-        name = self.normalize_name(name)
-
-        # find SPAC uniform name
-        try:
-            found = next(x for x in self.synonims_ if name in x)[0]
-        except StopIteration:
-            raise Exception('"%s" name not found, check the name is correct' % input_name)
-
-        coordinates = next(x for x in self.coordinates_ if x[0] == found)[1:]
-        return coordinates
-
-
 class NGG(object):
     __slots__ = ('chromosome', 'pos', 'strand', 'seed', 'pam', 'primer')
     def __init__(self, chro, pos, strand, seed, pam):
@@ -160,11 +122,30 @@ class PrimerDesign:
 
     complements = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
 
-    def __init__(self, sequenceFile, coordinates, synomins, verbose=False, precomputed_folder=PRECOMPUTED, regression=False, genome_index=None):
+    def __init__(
+        self,
+        sequenceFile,
+        coordinates,
+        synomins,
+        verbose=False,
+        precomputed_folder=PRECOMPUTED,
+        regression=False,
+        genome_index=None,
+        reference_resources=None,
+    ):
         self.sequenceFile_ = sequenceFile
-        self.chromosomesData = self.readsequence(self.sequenceFile_)
+        self.reference_resources = (
+            reference_resources
+            if reference_resources is not None
+            else ReferenceResources.from_files(
+                sequenceFile,
+                coordinates,
+                synomins,
+            )
+        )
+        self.chromosomesData = self.reference_resources.chromosomes
         self._numAlternativeCheckings = 2
-        self.annotationParser_ = AnnotationParser(coordinates, synomins)
+        self.annotationParser_ = self.reference_resources.annotations
         self.userNGGs = []
         self.tableNGGs = {}
         self.genome_index = genome_index
@@ -732,14 +713,8 @@ class PrimerDesign:
             :param sequenceFile: string
             :return: dict
         '''
-        with open(sequenceFile, 'r', encoding='utf-8') as f:
-            aux = f.read()
-        ansDict = {}
-        for x in aux.split('>'):
-            if x:
-                crFasta = chromosomeFasta(x)
-                ansDict[crFasta.name] = crFasta
-        return ansDict
+        # Preserve the legacy mutable-dict return type for direct callers.
+        return dict(read_fasta(sequenceFile))
 
 
 if __name__ == "__main__":

@@ -48,6 +48,7 @@ class Crispr4pService:
         designer_factory=PrimerDesign,
         designer_verbose=False,
         genome_index=None,
+        reference_resources=None,
     ):
         self.sequence_file = os.fspath(sequence_file)
         self.coordinates_file = os.fspath(coordinates_file)
@@ -56,6 +57,7 @@ class Crispr4pService:
         self._designer_factory = designer_factory
         self.designer_verbose = designer_verbose
         self._genome_index = genome_index
+        self._reference_resources = reference_resources
 
     @classmethod
     def from_project_data(
@@ -64,6 +66,7 @@ class Crispr4pService:
         designer_factory=PrimerDesign,
         designer_verbose=False,
         genome_index=None,
+        reference_resources=None,
     ):
         """Create a service using the reference files shipped with CRISPR4P."""
         return cls(
@@ -75,6 +78,7 @@ class Crispr4pService:
             designer_factory=designer_factory,
             designer_verbose=designer_verbose,
             genome_index=genome_index,
+            reference_resources=reference_resources,
         )
 
     def design_gene(self, name, n_mismatch=0):
@@ -183,19 +187,32 @@ class Crispr4pService:
         }
         if self._genome_index is not None:
             options["genome_index"] = self._genome_index
+        if self._reference_resources is not None:
+            options["reference_resources"] = self._reference_resources
 
-        return self._designer_factory(
+        designer = self._designer_factory(
             self.sequence_file,
             self.coordinates_file,
             self.synonyms_file,
             **options,
         )
+        self._remember_reference_resources(designer)
+        return designer
 
     @property
     def genome_index(self):
         return self._genome_index
 
+    @property
+    def reference_resources(self):
+        return self._reference_resources
+
     def _remember_genome_index(self, designer):
         genome_index = getattr(designer, "genome_index", None)
         if genome_index is not None:
             self._genome_index = genome_index
+
+    def _remember_reference_resources(self, designer):
+        resources = getattr(designer, "reference_resources", None)
+        if resources is not None:
+            self._reference_resources = resources
