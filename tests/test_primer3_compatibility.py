@@ -2,7 +2,8 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
-import crispr4p.crispr4p as crp
+import crispr4p.crispr4p as legacy_core
+import crispr4p.primers as primers
 
 
 class TestPrimer3Compatibility(unittest.TestCase):
@@ -17,8 +18,8 @@ class TestPrimer3Compatibility(unittest.TestCase):
         sequence_args = {"SEQUENCE_ID": "test"}
         global_args = {"PRIMER_OPT_SIZE": 20}
 
-        with patch.object(crp, "primer3", bindings):
-            actual = crp._design_primers(sequence_args, global_args)
+        with patch.object(primers, "primer3", bindings):
+            actual = primers.design_primers(sequence_args, global_args)
 
         self.assertIs(expected, actual)
         modern.assert_called_once_with(sequence_args, global_args)
@@ -31,11 +32,14 @@ class TestPrimer3Compatibility(unittest.TestCase):
         sequence_args = {"SEQUENCE_ID": "test"}
         global_args = {"PRIMER_OPT_SIZE": 20}
 
-        with patch.object(crp, "primer3", bindings):
-            actual = crp._design_primers(sequence_args, global_args)
+        with patch.object(primers, "primer3", bindings):
+            actual = primers.design_primers(sequence_args, global_args)
 
         self.assertIs(expected, actual)
         legacy.assert_called_once_with(sequence_args, global_args)
+
+    def test_legacy_module_keeps_design_primers_import(self) -> None:
+        self.assertIs(primers.design_primers, legacy_core._design_primers)
 
 
 if __name__ == "__main__":

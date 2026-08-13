@@ -8,8 +8,6 @@ import pickle
 import multiprocessing
 import queue
 
-from primer3 import bindings as primer3
-
 if __package__:
     from .genome import GenomePamIndex
     from .guides import (
@@ -23,6 +21,11 @@ if __package__:
         ReferenceResources,
         chromosomeFasta,
         read_fasta,
+    )
+    from .primers import (
+        build_hr_dna,
+        design_checking_primers,
+        design_primers as _design_primers,
     )
 else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
     from genome import GenomePamIndex
@@ -38,6 +41,11 @@ else:  # Direct ``python crispr4p/crispr4p.py`` compatibility.
         chromosomeFasta,
         read_fasta,
     )
+    from primers import (
+        build_hr_dna,
+        design_checking_primers,
+        design_primers as _design_primers,
+    )
 
 datapath = os.path.join(os.path.dirname(__file__), "../data/")
 
@@ -49,14 +57,6 @@ PRECOMPUTED_VERSION = 3
 ############### CONFIGURATION VALUES ###################
 SEED_LENGTH = 20
 UNIQUE_INDEX_LENGTH = (-12,-3)   # range of values selected for uniqueness
-
-
-def _design_primers(sequence_args, global_args):
-    """Use primer3-py's current API with a fallback for older releases."""
-    design = getattr(primer3, 'design_primers', None)
-    if design is None:
-        design = primer3.designPrimers
-    return design(sequence_args, global_args)
 
 
 def timeit(method):
@@ -432,12 +432,12 @@ class PrimerDesign:
             :param end: int
             :return: Tuple
         '''
-        prev250 = crFasta.sequence[start-250:start]
-        next250 = crFasta.sequence[end:end+250]
-        HRfw = prev250[-80:] + next250[:20]
-        HRrv = ''.join(reversed(next250[:80])) + ''.join(reversed(prev250[-20:]))
-        HRrv = self.sequenceComplement_(HRrv)
-        return HRfw, HRrv, prev250+next250
+        return build_hr_dna(
+            crFasta.sequence,
+            start,
+            end,
+            self.sequenceComplement_,
+        )
 
     def CheckingPrimers(self, crFasta, start, end):
         '''
@@ -450,55 +450,14 @@ class PrimerDesign:
         return self.CheckingPrimersWidth_(crFasta, start, end, 300)
 
     def CheckingPrimersWidth_(self, crFasta, start, end, width):
-
-        prev = crFasta.sequence[start-width:start]
-        next = crFasta.sequence[end:end+width]
-        #build dictionaries
-        primerDict =  {
-        'SEQUENCE_ID': 'MH1000',
-        'SEQUENCE_TEMPLATE': prev+next,
-        'SEQUENCE_INCLUDED_REGION': [0,2*width],
-        'SEQUENCE_EXCLUDED_REGION': [[width-80, 160]]
-        }
-        primerDict2 = {
-        'PRIMER_OPT_SIZE': 20,
-        'PRIMER_PICK_INTERNAL_OLIGO': 1,
-        'PRIMER_INTERNAL_MAX_SELF_END': 8,
-        'PRIMER_MIN_SIZE': 18,
-        'PRIMER_MAX_SIZE': 25,
-        'PRIMER_OPT_TM': 60.0,
-        'PRIMER_MIN_TM': 57.0,
-        'PRIMER_MAX_TM': 63.0,
-        'PRIMER_MIN_GC': 20.0,
-        'PRIMER_MAX_GC': 80.0,
-        'PRIMER_MAX_POLY_X': 100,
-        'PRIMER_INTERNAL_MAX_POLY_X': 100,
-        'PRIMER_SALT_MONOVALENT': 50.0,
-        'PRIMER_DNA_CONC': 50.0,
-        'PRIMER_MAX_NS_ACCEPTED': 0,
-        'PRIMER_MAX_SELF_ANY': 12,
-        'PRIMER_MAX_SELF_END': 8,
-        'PRIMER_PAIR_MAX_COMPL_ANY': 12,
-        'PRIMER_PAIR_MAX_COMPL_END': 8,
-        'PRIMER_PRODUCT_SIZE_RANGE': [[width-75, 2*width]],
-        }
-
-        ans = _design_primers(primerDict, primerDict2)
-
-        return_values = ['PRIMER_LEFT_%s_SEQUENCE', 'PRIMER_LEFT_%s_SEQUENCE', 'PRIMER_RIGHT_%s_SEQUENCE',
-                         'PRIMER_LEFT_%s_TM','PRIMER_RIGHT_%s_TM', 'PRIMER_LEFT_%s_GC_PERCENT',
-                         'PRIMER_RIGHT_%s_GC_PERCENT', 'PRIMER_PAIR_%s_PRODUCT_SIZE', 'PRIMER_LEFT_%s_TM',
-                         'PRIMER_RIGHT_%s_TM']
-
-        primerDesingCheck = []
-        for x in range(self._numAlternativeCheckings):
-            auxDict = {}
-            for elem in return_values:
-                designPrimer_key = elem % x
-                auxDict[designPrimer_key] = ans[designPrimer_key]
-            auxDict['negative_result'] = ans['PRIMER_PAIR_%s_PRODUCT_SIZE' % x] + (end-start)
-            primerDesingCheck.append(auxDict)
-        return primerDesingCheck
+        return design_checking_primers(
+            crFasta.sequence,
+            start,
+            end,
+            width,
+            self._numAlternativeCheckings,
+            primer_designer=_design_primers,
+        )
 
     @staticmethod
     def sequenceComplement_(sequence):
