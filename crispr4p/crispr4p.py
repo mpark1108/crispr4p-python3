@@ -23,6 +23,14 @@ SEED_LENGTH = 20
 UNIQUE_INDEX_LENGTH = (-12,-3)   # range of values selected for uniqueness
 
 
+def _design_primers(sequence_args, global_args):
+    """Use primer3-py's current API with a fallback for older releases."""
+    design = getattr(primer3, 'design_primers', None)
+    if design is None:
+        design = primer3.designPrimers
+    return design(sequence_args, global_args)
+
+
 def timeit(method):
 
     def timed(*args, **kw):
@@ -510,7 +518,7 @@ class PrimerDesign:
         'PRIMER_PRODUCT_SIZE_RANGE': [[width-75, 2*width]],
         }
 
-        ans = primer3.designPrimers(primerDict, primerDict2)
+        ans = _design_primers(primerDict, primerDict2)
 
         return_values = ['PRIMER_LEFT_%s_SEQUENCE', 'PRIMER_LEFT_%s_SEQUENCE', 'PRIMER_RIGHT_%s_SEQUENCE',
                          'PRIMER_LEFT_%s_TM','PRIMER_RIGHT_%s_TM', 'PRIMER_LEFT_%s_GC_PERCENT',
