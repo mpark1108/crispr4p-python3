@@ -131,6 +131,7 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service.annotate_guides.return_value = DESIGN_ANNOTATIONS
         service.cassette_choices.return_value = ((),)
         service.disruption_donors.return_value = ((),)
+        service.restoration_donors.return_value = (None,)
 
         with patch.object(webapp, "create_service", return_value=service):
             result = handler.run_design_model("ade6", None, None, None)
@@ -142,6 +143,12 @@ class TestWebRenderingCharacterization(unittest.TestCase):
             DESIGN_RESULT.guides,
             DESIGN_ANNOTATIONS,
             ((),),
+            80,
+            "ade6",
+        )
+        service.restoration_donors.assert_called_once_with(
+            DESIGN_RESULT.guides,
+            DESIGN_ANNOTATIONS,
             80,
             "ade6",
         )
@@ -174,6 +181,7 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service.annotate_guides.return_value = DESIGN_ANNOTATIONS
         service.cassette_choices.return_value = ((),)
         service.disruption_donors.return_value = ((),)
+        service.restoration_donors.return_value = (None,)
 
         with patch.object(webapp, "create_service", return_value=service):
             handler.run_design_model(None, "III", "1316337", "1317995")

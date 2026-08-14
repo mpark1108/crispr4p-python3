@@ -217,6 +217,12 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
             DONOR_ARM_LENGTH,
             result.name,
         )
+        restoration_donors = service.restoration_donors(
+            result.guides,
+            guide_annotations,
+            DONOR_ARM_LENGTH,
+            result.name,
+        )
 
         src_path = os.path.dirname(__file__) if os.path.dirname(__file__) else '.'
         with open(os.path.join(src_path, 'template/container_table.html'), 'r', encoding='utf-8') as fh:
@@ -228,6 +234,7 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
             template_file,
             cassette_choices=cassette_choices,
             disruption_donors=disruption_donors,
+            restoration_donors=restoration_donors,
         )
 
 

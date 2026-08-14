@@ -19,6 +19,7 @@ from .primers import (
     insertion_primers as design_insertion_primers,
 )
 from .resources import GeneNameNotFoundError
+from .restoration import build_donor as build_restoration_donor
 from .spedit import has_bsai, make_oligos
 
 
@@ -352,6 +353,35 @@ class Crispr4pService:
             window=window,
             insert_length=insert_length,
         )
+
+    def restoration_donors(
+        self,
+        guides,
+        annotations,
+        arm_length,
+        target_name=None,
+    ):
+        guides = tuple(guides)
+        annotations = tuple(annotations)
+        if len(guides) != len(annotations):
+            raise ValueError("guide and annotation counts must match")
+
+        resources = self._load_resources()
+        donors = []
+        for guide, annotation in zip(guides, annotations):
+            if target_strand(annotation, target_name) is None:
+                donors.append(None)
+                continue
+
+            reference = resources.chromosomes[guide.chromosome].sequence
+            donors.append(
+                build_restoration_donor(
+                    reference,
+                    guide.cut_coordinates,
+                    arm_length,
+                )
+            )
+        return tuple(donors)
 
     def _run(
         self,

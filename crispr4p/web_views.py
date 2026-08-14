@@ -281,6 +281,7 @@ def cassette_data(cassette_choices):
     for choices in cassette_choices:
         ids = []
         for cassette in choices:
+            forward, reverse = make_oligos(cassette.guide)
             row = {
                 "id": cassette.id,
                 "sequence": cassette.sequence,
@@ -288,6 +289,9 @@ def cassette_data(cassette_choices):
                 "guide": cassette.guide,
                 "pam": cassette.pam,
                 "gc_percent": round(cassette.gc_percent, 1),
+                "spedit_forward": forward,
+                "spedit_reverse": reverse,
+                "has_internal_bsai": has_bsai(cassette.guide),
                 "frames": [
                     " ".join(
                         f"{codon}*" if codon in STOP_CODONS else codon
@@ -329,6 +333,18 @@ def donor_data(donor_choices):
                 raise ValueError("donors for one guide must share homology arms")
         rows.append(row)
     return rows
+
+
+def restoration_data(donors):
+    """Build guide-aligned restoration donor data."""
+    return [
+        None if donor is None else {
+            "arm_length": donor.arm_length,
+            "left_arm": donor.left_arm,
+            "right_arm": donor.right_arm,
+        }
+        for donor in donors
+    ]
 
 
 def _compact_json(value):
@@ -448,6 +464,7 @@ def render_design(
     template_text,
     cassette_choices=(),
     disruption_donors=(),
+    restoration_donors=(),
 ):
     """Render a design result with the HTML template."""
     primer = result.checking_primers[0] if result.checking_primers else {}
@@ -490,5 +507,8 @@ def render_design(
     )
     context['cassette_json'] = _compact_json(cassette_data(cassette_choices))
     context['donor_json'] = _compact_json(donor_data(disruption_donors))
+    context['restoration_json'] = _compact_json(
+        restoration_data(restoration_donors)
+    )
 
     return template_text % context

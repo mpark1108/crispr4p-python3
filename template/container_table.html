@@ -114,6 +114,34 @@
     </div>
   </div>
 
+  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('wild_type_restoration'))">Wild-Type Restoration Design</h3>
+  <div id="wild_type_restoration" class="workflow_section">
+    <div id="restoration_status"></div>
+    <div id="restoration_content">
+    <h5>Universal rescue guide</h5>
+    <div class="l_field">Protospacer:</div><div class="r_field" id="restoration_guide"></div><br>
+    <div class="l_field">PAM:</div><div class="r_field" id="restoration_pam"></div><br>
+    <div class="l_field">SpEDIT/pLSB forward oligo, 52 nt:</div><div class="r_field" id="restoration_forward_oligo"></div><br>
+    <div class="l_field">SpEDIT/pLSB reverse oligo, 52 nt:</div><div class="r_field" id="restoration_reverse_oligo"></div><br>
+    <div class="l_field">Internal BsaI site check:</div><div class="r_field" id="restoration_bsai"></div><br>
+
+    <h5>Restoration donor</h5>
+    <div class="l_field">Homology arm length:</div><div class="r_field" id="restoration_arm_length"></div><br>
+    <div class="l_field">WT left homology arm:</div><div class="r_field" id="restoration_left_arm"></div><br>
+    <div class="l_field">WT right homology arm:</div><div class="r_field" id="restoration_right_arm"></div><br>
+    <div class="l_field">Complete donor (forward reference):</div><div class="r_field" id="restoration_sequence"></div><br>
+    <div class="l_field">Reverse complement:</div><div class="r_field" id="restoration_reverse"></div><br>
+    <div class="l_field">Total donor length:</div><div class="r_field" id="restoration_total_length"></div><br>
+
+    <h5>PCR validation</h5>
+    <div class="l_field">CkFw:</div><div class="r_field" id="restoration_primer_forward"></div><br>
+    <div class="l_field">CkFw Tm:</div><div class="r_field" id="restoration_primer_forward_tm"></div><br>
+    <div class="l_field">CkRv:</div><div class="r_field" id="restoration_primer_reverse"></div><br>
+    <div class="l_field">CkRv Tm:</div><div class="r_field" id="restoration_primer_reverse_tm"></div><br>
+    <div class="l_field">Expected restored product:</div><div class="r_field" id="restoration_product_size"></div><br>
+    </div>
+  </div>
+
   <script>
     var actg = {"A": "T", "C": "G", "T": "A", "G": "C"};
 
@@ -324,6 +352,19 @@
 
     }
 
+    function show_bsai(element, has_internal_bsai) {
+      if (has_internal_bsai) {
+        element.textContent =
+          "Warning: this guide contains an internal BsaI recognition site.";
+        element.style.color = "#b00020";
+        element.style.fontWeight = "bold";
+      } else {
+        element.textContent = "No internal BsaI site detected.";
+        element.style.color = "";
+        element.style.fontWeight = "";
+      }
+    }
+
     function update_spedit(number) {
       var candidate = spedit_rows[Number(number)];
       var guide_element = document.getElementById("spedit_guide");
@@ -356,16 +397,7 @@
       reverse_element.textContent = "5'-" + candidate.reverse + "-3'";
       error_element.textContent = "";
 
-      if (candidate.has_internal_bsai) {
-        warning_element.textContent =
-          "Warning: this guide contains an internal BsaI recognition site.";
-        warning_element.style.color = "#b00020";
-        warning_element.style.fontWeight = "bold";
-      } else {
-        warning_element.textContent = "No internal BsaI site detected.";
-        warning_element.style.color = "";
-        warning_element.style.fontWeight = "";
-      }
+      show_bsai(warning_element, candidate.has_internal_bsai);
     }
 
     function create_cassette_menu(guide_number) {
@@ -424,6 +456,61 @@
       document.getElementById("donor_total_length").textContent = total_length;
     }
 
+    function update_restoration(guide_number, cassette) {
+      var index = Number(guide_number);
+      var annotation = annotation_rows[index];
+      var non_coding = annotation && annotation.coding_target === false;
+      var content = document.getElementById("restoration_content");
+      var fields = [
+        "restoration_guide", "restoration_pam",
+        "restoration_forward_oligo", "restoration_reverse_oligo",
+        "restoration_bsai", "restoration_arm_length",
+        "restoration_left_arm", "restoration_right_arm",
+        "restoration_sequence", "restoration_reverse",
+        "restoration_total_length"
+      ];
+      for (var field_index = 0; field_index < fields.length; field_index++) {
+        document.getElementById(fields[field_index]).textContent = "";
+      }
+
+      document.getElementById("restoration_status").textContent =
+        non_coding ? "Selected target is non-coding." : "";
+      content.style.display = non_coding ? "none" : "";
+      if (non_coding || !cassette) {
+        return;
+      }
+
+      document.getElementById("restoration_guide").textContent =
+        "5'-" + cassette.guide + "-3'";
+      document.getElementById("restoration_pam").textContent = cassette.pam;
+      document.getElementById("restoration_forward_oligo").textContent =
+        "5'-" + cassette.spedit_forward + "-3'";
+      document.getElementById("restoration_reverse_oligo").textContent =
+        "5'-" + cassette.spedit_reverse + "-3'";
+      show_bsai(
+        document.getElementById("restoration_bsai"),
+        cassette.has_internal_bsai
+      );
+
+      var donor = restoration_rows[index];
+      if (!donor) {
+        return;
+      }
+      var sequence = donor.left_arm + donor.right_arm;
+      document.getElementById("restoration_arm_length").textContent =
+        donor.arm_length + " bp each";
+      document.getElementById("restoration_left_arm").textContent =
+        "5'-" + donor.left_arm + "-3'";
+      document.getElementById("restoration_right_arm").textContent =
+        "5'-" + donor.right_arm + "-3'";
+      document.getElementById("restoration_sequence").textContent =
+        "5'-" + sequence + "-3'";
+      document.getElementById("restoration_reverse").textContent =
+        "5'-" + rev_complement(sequence) + "-3'";
+      document.getElementById("restoration_total_length").textContent =
+        sequence.length + " bp";
+    }
+
     function update_cassette(guide_number) {
       var menu = document.getElementById("stop_cassette_menu");
       if (guide_number === undefined) {
@@ -442,6 +529,7 @@
       if (non_coding) {
         menu.options.length = 0;
         update_donor(guide_number, null);
+        update_restoration(guide_number, null);
         return;
       }
       var strand = annotation ? annotation.coding_strand : null;
@@ -458,6 +546,7 @@
         document.getElementById("stop_frame_1").textContent = "";
         document.getElementById("stop_frame_2").textContent = "";
         update_donor(guide_number, null);
+        update_restoration(guide_number, null);
         return;
       }
 
@@ -474,6 +563,7 @@
       document.getElementById("stop_frame_1").textContent = cassette.frames[1];
       document.getElementById("stop_frame_2").textContent = cassette.frames[2];
       update_donor(guide_number, cassette);
+      update_restoration(guide_number, cassette);
     }
 
     function show_insertion_primers(pair) {
@@ -490,6 +580,16 @@
         pair.wt_product_size + " bp";
       document.getElementById("insertion_primer_disrupted_size").textContent =
         pair.disrupted_product_size + " bp";
+      document.getElementById("restoration_primer_forward").textContent =
+        "5'-" + pair.forward + "-3'";
+      document.getElementById("restoration_primer_forward_tm").textContent =
+        Math.round(pair.forward_tm) + " °C";
+      document.getElementById("restoration_primer_reverse").textContent =
+        "5'-" + pair.reverse + "-3'";
+      document.getElementById("restoration_primer_reverse_tm").textContent =
+        Math.round(pair.reverse_tm) + " °C";
+      document.getElementById("restoration_product_size").textContent =
+        pair.wt_product_size + " bp";
     }
 
     function clear_insertion_primers(message) {
@@ -502,6 +602,13 @@
       document.getElementById("insertion_primer_wt_size").textContent = "";
       document.getElementById("insertion_primer_disrupted_size").textContent =
         "";
+      document.getElementById("restoration_primer_forward").textContent = "";
+      document.getElementById("restoration_primer_forward_tm").textContent =
+        "";
+      document.getElementById("restoration_primer_reverse").textContent = "";
+      document.getElementById("restoration_primer_reverse_tm").textContent =
+        "";
+      document.getElementById("restoration_product_size").textContent = "";
     }
 
     function selected_guide_number() {
@@ -583,6 +690,7 @@
     var cassette_catalog = cassette_data.catalog;
     var cassette_choices = cassette_data.choices;
     var donor_arms = %(donor_json)s;
+    var restoration_rows = %(restoration_json)s;
     var insertion_primer_cache = {};
     var insertion_primer_requests = {};
 

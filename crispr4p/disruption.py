@@ -80,6 +80,12 @@ class StopCassette:
         return self.sequence[20:]
 
     @property
+    def cut_bases(self):
+        """Return the cassette bases on either side of the Cas9 cut."""
+        cut_left = len(self.guide) - 3
+        return cut_left, cut_left + 1
+
+    @property
     def gc_percent(self):
         return 100 * sum(base in "GC" for base in self.guide) / len(self.guide)
 
