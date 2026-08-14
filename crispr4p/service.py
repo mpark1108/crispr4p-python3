@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .annotations import GenomeAnnotations
 from .crispr4p import NGG, PrimerDesign
+from .disruption import load_cassettes, recut_sites, target_strand
 from .guides import match_guide
 from .models import DesignResult, OligoAnalysisResult, OligoMatch
 from .resources import GeneNameNotFoundError
@@ -52,6 +53,8 @@ class Crispr4pService:
         gene_viability_file=None,
         genome_annotations=None,
         annotation_factory=GenomeAnnotations.from_files,
+        cassette_file=None,
+        cassettes=None,
     ):
         self.sequence_file = os.fspath(sequence_file)
         self.coordinates_file = os.fspath(coordinates_file)
@@ -73,6 +76,10 @@ class Crispr4pService:
         )
         self._genome_annotations = genome_annotations
         self._annotation_factory = annotation_factory
+        self.cassette_file = (
+            os.fspath(cassette_file) if cassette_file is not None else None
+        )
+        self._cassettes = tuple(cassettes) if cassettes is not None else None
 
     @classmethod
     def from_project_data(
@@ -84,6 +91,7 @@ class Crispr4pService:
         reference_resources=None,
         genome_annotations=None,
         annotation_factory=GenomeAnnotations.from_files,
+        cassettes=None,
     ):
         """Use the reference files included with CRISPR4P."""
         return cls(
@@ -105,6 +113,8 @@ class Crispr4pService:
             ),
             genome_annotations=genome_annotations,
             annotation_factory=annotation_factory,
+            cassette_file=PROJECT_DATA_DIRECTORY / "stop_cassettes.json",
+            cassettes=cassettes,
         )
 
     def design_gene(self, name, n_mismatch=0):
@@ -219,6 +229,42 @@ class Crispr4pService:
         """Annotate guides in display order."""
         return tuple(self.annotate_guide(guide) for guide in guides)
 
+    @property
+    def cassettes(self):
+        """Return the packaged stop cassettes."""
+        if self._cassettes is None:
+            if self.cassette_file is None:
+                return ()
+            self._cassettes = load_cassettes(self.cassette_file)
+        return self._cassettes
+
+    def cassette_choices(self, guides, annotations, target_name=None):
+        """Return cassettes without a similar guide target at the junction."""
+        guides = tuple(guides)
+        annotations = tuple(annotations)
+        if len(guides) != len(annotations):
+            raise ValueError("guide and annotation counts must match")
+
+        resources = self._load_resources()
+        choices = []
+        for guide, annotation in zip(guides, annotations):
+            chromosome = resources.chromosomes[guide.chromosome]
+            coding_strand = target_strand(annotation, target_name)
+            choices.append(
+                tuple(
+                    cassette
+                    for cassette in self.cassettes
+                    if not recut_sites(
+                        chromosome.sequence,
+                        guide.cut_coordinates,
+                        guide.seed,
+                        cassette,
+                        coding_strand,
+                    )
+                )
+            )
+        return tuple(choices)
+
     def _run(
         self,
         name=None,
@@ -294,6 +340,11 @@ class Crispr4pService:
             self.gene_viability_file,
         )
         return self._genome_annotations
+
+    def _load_resources(self):
+        if self._reference_resources is None:
+            self._designer()
+        return self._reference_resources
 
     def _keep_index(self, designer):
         genome_index = getattr(designer, "genome_index", None)

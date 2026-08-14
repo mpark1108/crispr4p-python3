@@ -4,6 +4,7 @@ import html
 import json
 
 from .annotations import VIABILITY_LABELS
+from .disruption import STOP_CODONS, target_strand
 from .models import DesignResult, OligoAnalysisResult
 from .spedit import has_bsai, make_oligos
 
@@ -218,6 +219,7 @@ def annotation_rows(guides, annotations, target_name=None):
                 "pam_coordinates": list(guide.pam_coordinates),
                 "cut_coordinates": list(guide.cut_coordinates),
                 "strand": "+" if guide.strand == 1 else "-",
+                "coding_strand": target_strand(annotation, target_name),
                 "is_intergenic": annotation.is_intergenic,
                 "gene_count": len(annotation.genes),
                 "genes": genes,
@@ -266,6 +268,31 @@ def spedit_rows(table_pos_grna) -> list[dict]:
             )
 
     return candidates
+
+
+def cassette_rows(cassette_choices):
+    """Build browser data for the stop-cassette menu."""
+    return [
+        [
+            {
+                "id": cassette.id,
+                "sequence": cassette.sequence,
+                "length": len(cassette.sequence),
+                "guide": cassette.guide,
+                "pam": cassette.pam,
+                "gc_percent": round(cassette.gc_percent, 1),
+                "frames": [
+                    " ".join(
+                        f"{codon}*" if codon in STOP_CODONS else codon
+                        for codon in frame
+                    )
+                    for frame in cassette.frames
+                ],
+            }
+            for cassette in choices
+        ]
+        for choices in cassette_choices
+    ]
 
 
 def render_query_error():
@@ -375,7 +402,12 @@ def render_oligo(result: OligoAnalysisResult):
     return block
 
 
-def render_design(result: DesignResult, guide_annotations, template_text):
+def render_design(
+    result: DesignResult,
+    guide_annotations,
+    template_text,
+    cassette_choices=(),
+):
     """Render a design result with the HTML template."""
     primer = result.checking_primers[0] if result.checking_primers else {}
 
@@ -415,5 +447,6 @@ def render_design(result: DesignResult, guide_annotations, template_text):
             target_name=result.name,
         )
     )
+    context['cassette_json'] = json.dumps(cassette_rows(cassette_choices))
 
     return template_text % context

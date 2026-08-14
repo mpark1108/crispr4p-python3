@@ -1,0 +1,46 @@
+{
+  "version": 1,
+  "assembly": "ASM294v2.26",
+  "candidates": [
+    {
+      "id": 1,
+      "sequence": "TGATGACCTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 2,
+      "sequence": "TGATGACGTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 3,
+      "sequence": "TGATGAGCTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 4,
+      "sequence": "TGATGAGGTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 5,
+      "sequence": "TAATGACCTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 6,
+      "sequence": "TAATGACGTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 7,
+      "sequence": "TAATGAGCTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 8,
+      "sequence": "TAATGAGGTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 9,
+      "sequence": "TGATGAAGTAGTGACCTAGTAGG"
+    },
+    {
+      "id": 10,
+      "sequence": "TGATGACTTAGTGACCTAGTAGG"
+    }
+  ]
+}

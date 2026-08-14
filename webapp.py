@@ -157,7 +157,16 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
         with open(os.path.join(src_path, 'template/container_table.html'), 'r', encoding='utf-8') as fh:
             template_file = fh.read()
 
-        return render_design(result, guide_annotations, template_file)
+        return render_design(
+            result,
+            guide_annotations,
+            template_file,
+            cassette_choices=service.cassette_choices(
+                result.guides,
+                guide_annotations,
+                result.name,
+            ),
+        )
 
 
 def main():

@@ -129,6 +129,7 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service = Mock()
         service.design_gene.return_value = DESIGN_RESULT
         service.annotate_guides.return_value = DESIGN_ANNOTATIONS
+        service.cassette_choices.return_value = ((),)
 
         with patch.object(webapp, "create_service", return_value=service):
             result = handler.run_design_model("ade6", None, None, None)
@@ -163,6 +164,7 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service = Mock()
         service.design_region.return_value = DESIGN_RESULT
         service.annotate_guides.return_value = DESIGN_ANNOTATIONS
+        service.cassette_choices.return_value = ((),)
 
         with patch.object(webapp, "create_service", return_value=service):
             handler.run_design_model(None, "III", "1316337", "1317995")

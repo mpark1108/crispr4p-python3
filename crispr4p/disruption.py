@@ -1,0 +1,215 @@
+"""Stop-cassette disruption design."""
+
+import json
+from dataclasses import dataclass
+
+from .spedit import reverse_complement
+
+
+STOP_CODONS = frozenset({"TAA", "TAG", "TGA"})
+PAM_SUFFIXES = frozenset({"GG", "AG"})
+SITE_LENGTH = 23
+
+
+def _codons(sequence, frame):
+    return tuple(
+        sequence[start:start + 3]
+        for start in range(frame, len(sequence) - 2, 3)
+    )
+
+
+def _has_tandem_stops(codons):
+    stops = [codon in STOP_CODONS for codon in codons]
+    return any(left and right for left, right in zip(stops, stops[1:]))
+
+
+def has_junction_pam(sequence):
+    """Detect a PAM within the first six bases in either orientation."""
+    orientations = (sequence, reverse_complement(sequence))
+    return any(
+        oriented[start + 1:start + 3] in PAM_SUFFIXES
+        for oriented in orientations
+        for start in range(4)
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class RecutSite:
+    """A target in the edited junction that may retain first-guide activity."""
+
+    target: str
+    pam: str
+    target_strand: str
+    cassette_strand: str
+    mismatches: int
+
+
+@dataclass(frozen=True, slots=True)
+class StopCassette:
+    """One selectable 23-nt stop cassette."""
+
+    id: int
+    sequence: str
+
+    def __post_init__(self):
+        sequence = self.sequence.upper()
+        if len(sequence) != 23:
+            raise ValueError("stop cassette must contain 23 nt")
+        if set(sequence) - set("ACGT"):
+            raise ValueError("stop cassette contains an invalid nucleotide")
+        if sequence[-2:] != "GG":
+            raise ValueError("stop cassette must end with an NGG PAM")
+        if has_junction_pam(sequence):
+            raise ValueError("stop cassette creates a PAM beside the junction")
+        valid_frames = all(
+            _has_tandem_stops(_codons(sequence, frame))
+            for frame in range(3)
+        )
+        if not valid_frames:
+            raise ValueError(
+                "stop cassette must contain tandem stops in every frame"
+            )
+        object.__setattr__(self, "sequence", sequence)
+
+    @property
+    def guide(self):
+        return self.sequence[:20]
+
+    @property
+    def pam(self):
+        return self.sequence[20:]
+
+    @property
+    def gc_percent(self):
+        return 100 * sum(base in "GC" for base in self.guide) / len(self.guide)
+
+    @property
+    def frames(self):
+        return tuple(_codons(self.sequence, frame) for frame in range(3))
+
+    def orient(self, strand):
+        if strand in (None, "+"):
+            return self.sequence
+        if strand == "-":
+            return reverse_complement(self.sequence)
+        raise ValueError("coding strand must be + or -")
+
+
+def _recut_sites(window, insert_start, insert_end, guide, cassette_strand,
+                 max_mismatches):
+    sites = []
+    window_length = len(window)
+    orientations = (
+        ("+", window, insert_start, insert_end),
+        (
+            "-",
+            reverse_complement(window),
+            window_length - insert_end,
+            window_length - insert_start,
+        ),
+    )
+
+    for target_strand, sequence, start, end in orientations:
+        for pam_start in range(20, len(sequence) - 2):
+            pam = sequence[pam_start:pam_start + 3]
+            if pam[1:] not in PAM_SUFFIXES:
+                continue
+
+            site_start = pam_start - 20
+            site_end = pam_start + 3
+            if site_end <= start or site_start >= end:
+                continue
+
+            target = sequence[site_start:pam_start]
+            mismatches = sum(
+                left != right for left, right in zip(guide, target)
+            )
+            if mismatches <= max_mismatches:
+                sites.append(
+                    RecutSite(
+                        target=target,
+                        pam=pam,
+                        target_strand=target_strand,
+                        cassette_strand=cassette_strand,
+                        mismatches=mismatches,
+                    )
+                )
+    return sites
+
+
+def recut_sites(reference, cut, guide, cassette, coding_strand=None,
+                max_mismatches=4):
+    """Find NGG/NAG junction targets similar to the first guide."""
+    reference = reference.upper()
+    guide = guide.upper()
+    cut_left, cut_right = cut
+    if cut_right != cut_left + 1:
+        raise ValueError("cut coordinates must describe adjacent bases")
+    if not 0 < cut_left < len(reference):
+        raise ValueError("cut is outside the reference sequence")
+    if len(guide) != 20 or set(guide) - set("ACGT"):
+        raise ValueError("guide must contain 20 DNA bases")
+    if coding_strand not in (None, "+", "-"):
+        raise ValueError("coding strand must be + or -")
+
+    flank = SITE_LENGTH
+    left = reference[max(0, cut_left - flank):cut_left]
+    right = reference[cut_left:min(len(reference), cut_left + flank)]
+    strands = ("+", "-") if coding_strand is None else (coding_strand,)
+    sites = []
+
+    for cassette_strand in strands:
+        insert = cassette.orient(cassette_strand)
+        window = left + insert + right
+        insert_start = len(left)
+        insert_end = insert_start + len(insert)
+        sites.extend(
+            _recut_sites(
+                window,
+                insert_start,
+                insert_end,
+                guide,
+                cassette_strand,
+                max_mismatches,
+            )
+        )
+    return tuple(sites)
+
+
+def load_cassettes(path):
+    """Load the packaged stop-cassette catalog."""
+    with open(path, encoding="utf-8") as handle:
+        data = json.load(handle)
+
+    if data.get("version") != 1:
+        raise ValueError("unsupported stop-cassette data version")
+    if data.get("assembly") != "ASM294v2.26":
+        raise ValueError("stop-cassette assembly does not match CRISPR4P")
+
+    cassettes = tuple(
+        StopCassette(record["id"], record["sequence"])
+        for record in data.get("candidates", ())
+    )
+    ids = tuple(cassette.id for cassette in cassettes)
+    if ids != tuple(range(1, len(cassettes) + 1)):
+        raise ValueError("stop-cassette IDs must be consecutive")
+    if len({cassette.sequence for cassette in cassettes}) != len(cassettes):
+        raise ValueError("stop-cassette sequences must be unique")
+    return cassettes
+
+
+def target_strand(annotation, target_name=None):
+    """Return the coding strand when one target gene is identifiable."""
+    target = str(target_name).strip().casefold() if target_name else None
+    if target:
+        for gene in annotation.genes:
+            identifiers = {gene.gene_id.casefold()}
+            if gene.name:
+                identifiers.add(gene.name.casefold())
+            if target in identifiers:
+                return gene.strand if gene.is_protein_coding else None
+
+    coding_genes = [gene for gene in annotation.genes if gene.is_protein_coding]
+    if len(coding_genes) == 1:
+        return coding_genes[0].strand
+    return None
