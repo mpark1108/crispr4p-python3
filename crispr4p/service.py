@@ -14,6 +14,10 @@ from .disruption import (
 )
 from .guides import match_guide
 from .models import DesignResult, OligoAnalysisResult, OligoMatch
+from .primers import (
+    PrimerNotFoundError,
+    insertion_primers as design_insertion_primers,
+)
 from .resources import GeneNameNotFoundError
 from .spedit import has_bsai, make_oligos
 
@@ -324,6 +328,30 @@ class Crispr4pService:
                 )
             )
         return tuple(donors)
+
+    def insertion_primers(
+        self,
+        chromosome,
+        cut_coordinates,
+        arm_length=80,
+        insert_length=23,
+        window=300,
+    ):
+        """Design checking primers for one insertion site."""
+        resources = self._load_resources()
+        chromosome = str(chromosome).strip()
+        try:
+            reference = resources.chromosomes[chromosome].sequence
+        except KeyError:
+            raise ValueError(f"unknown chromosome: {chromosome}") from None
+
+        return design_insertion_primers(
+            reference,
+            cut_coordinates,
+            arm_length=arm_length,
+            window=window,
+            insert_length=insert_length,
+        )
 
     def _run(
         self,

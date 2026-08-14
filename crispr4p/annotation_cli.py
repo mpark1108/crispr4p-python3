@@ -169,11 +169,6 @@ def format_cut(annotation):
             ]
         )
 
-    lines.extend(
-        [
-            "distance 0 bp means that the named region touches the cut boundary",
-        ]
-    )
     return "\n".join(lines)
 
 
