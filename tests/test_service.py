@@ -72,6 +72,19 @@ class CurrentNameFallbackDesigner(RecordingDesigner):
         return LEGACY_RESULT[:3] + (kwargs["name"],) + LEGACY_RESULT[4:]
 
 
+class GffOnlyDesigner(RecordingDesigner):
+    def runWeb(self, **kwargs):
+        self.run_web_calls.append(kwargs)
+        if kwargs["name"] is not None:
+            raise GeneNameNotFoundError(kwargs["name"])
+        return LEGACY_RESULT[:3] + (
+            None,
+            kwargs["cr"],
+            kwargs["start"],
+            kwargs["end"],
+        )
+
+
 class RecordingGenomeAnnotations:
     def __init__(self):
         self.calls = []
@@ -153,6 +166,54 @@ class TestCrispr4pService(unittest.TestCase):
             ],
         )
         self.assertIs(LEGACY_RESULT[0], result.guide_table)
+
+    def test_gff_only_gene_uses_its_interval(self) -> None:
+        annotation_index = SimpleNamespace(
+            find_gene=lambda name: SimpleNamespace(
+                gene_id="SPNCRNA.7311",
+                name=None,
+                chromosome="III",
+                start=1316304,
+                end=1317821,
+            )
+        )
+        service = Crispr4pService(
+            "genome.fa",
+            "coordinates.txt",
+            "synonyms.txt",
+            designer_factory=GffOnlyDesigner,
+            genome_annotations=annotation_index,
+        )
+
+        result = service.design_gene("SPNCRNA.7311", n_mismatch=2)
+
+        self.assertEqual("SPNCRNA.7311", result.name)
+        self.assertEqual(("III", "1316304", "1317821"), (
+            result.chromosome,
+            result.start,
+            result.end,
+        ))
+        self.assertEqual(3, len(GffOnlyDesigner.instances))
+        self.assertEqual(
+            [
+                ("SPNCRNA.7311", None, None, None),
+                ("SPNCRNA.7311", None, None, None),
+                (None, "III", "1316304", "1317821"),
+            ],
+            [
+                (
+                    designer.run_web_calls[0]["name"],
+                    designer.run_web_calls[0]["cr"],
+                    designer.run_web_calls[0]["start"],
+                    designer.run_web_calls[0]["end"],
+                )
+                for designer in GffOnlyDesigner.instances
+            ],
+        )
+        self.assertTrue(all(
+            designer.run_web_calls[0]["nMismatch"] == 2
+            for designer in GffOnlyDesigner.instances
+        ))
 
     def test_name_absent_from_legacy_and_gff_keeps_lookup_error(self) -> None:
         annotation_index = SimpleNamespace(find_gene=lambda name: None)

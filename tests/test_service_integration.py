@@ -153,8 +153,36 @@ class TestServiceIntegration(unittest.TestCase):
             ),
         )
         self.assertIn("<b>Name</b>=nrg1", html)
-        self.assertIn('"gene_id": "SPBPB2B2.01"', html)
-        self.assertIn('"role": "Primary target"', html)
+        self.assertIn('"gene_id":"SPBPB2B2.01"', html)
+        self.assertIn('"role":"Primary target"', html)
+
+    def test_gff_only_gene_design_uses_current_interval(self) -> None:
+        result = self.service.design_gene("SPNCRNA.7311")
+        annotations = self.service.annotate_guides(result.guides)
+        choices = self.service.cassette_choices(
+            result.guides,
+            annotations,
+            result.name,
+        )
+        donors = self.service.disruption_donors(
+            result.guides,
+            annotations,
+            choices,
+            80,
+            result.name,
+        )
+        rows = annotation_rows(result.guides, annotations, result.name)
+
+        self.assertEqual("SPNCRNA.7311", result.name)
+        self.assertEqual(("III", "1316304", "1317821"), (
+            result.chromosome,
+            result.start,
+            result.end,
+        ))
+        self.assertEqual(128, len(result.guides))
+        self.assertTrue(all(row["coding_target"] is False for row in rows))
+        self.assertTrue(all(not group for group in choices))
+        self.assertTrue(all(not group for group in donors))
 
     def test_real_cli_result_bodies_are_byte_for_byte_compatible(self) -> None:
         self.assertEqual(

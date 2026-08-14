@@ -95,6 +95,64 @@ class StopCassette:
         raise ValueError("coding strand must be + or -")
 
 
+@dataclass(frozen=True, slots=True)
+class DisruptionDonor:
+    """A stop cassette with its locus-specific homology arms."""
+
+    cassette: StopCassette
+    coding_strand: str
+    arm_length: int
+    left_arm: str
+    insert: str
+    right_arm: str
+
+    @property
+    def sequence(self):
+        return self.left_arm + self.insert + self.right_arm
+
+    @property
+    def reverse(self):
+        return reverse_complement(self.sequence)
+
+    @property
+    def total_length(self):
+        return len(self.sequence)
+
+
+def _cut_index(reference, cut):
+    cut_left, cut_right = cut
+    if cut_right != cut_left + 1:
+        raise ValueError("cut coordinates must describe adjacent bases")
+    if not 0 < cut_left < len(reference):
+        raise ValueError("cut is outside the reference sequence")
+    return cut_left
+
+
+def build_donor(reference, cut, cassette, coding_strand, arm_length):
+    """Build a disruption donor around a Cas9 cut boundary."""
+    reference = reference.upper()
+    cut_index = _cut_index(reference, cut)
+    if coding_strand not in ("+", "-"):
+        raise ValueError("coding strand must be + or -")
+    if (
+        not isinstance(arm_length, int)
+        or isinstance(arm_length, bool)
+        or arm_length < 1
+    ):
+        raise ValueError("arm length must be a positive integer")
+    if cut_index < arm_length or len(reference) - cut_index < arm_length:
+        raise ValueError("reference does not contain complete homology arms")
+
+    return DisruptionDonor(
+        cassette=cassette,
+        coding_strand=coding_strand,
+        arm_length=arm_length,
+        left_arm=reference[cut_index - arm_length:cut_index],
+        insert=cassette.orient(coding_strand),
+        right_arm=reference[cut_index:cut_index + arm_length],
+    )
+
+
 def _recut_sites(window, insert_start, insert_end, guide, cassette_strand,
                  max_mismatches):
     sites = []
@@ -142,11 +200,7 @@ def recut_sites(reference, cut, guide, cassette, coding_strand=None,
     """Find NGG/NAG junction targets similar to the first guide."""
     reference = reference.upper()
     guide = guide.upper()
-    cut_left, cut_right = cut
-    if cut_right != cut_left + 1:
-        raise ValueError("cut coordinates must describe adjacent bases")
-    if not 0 < cut_left < len(reference):
-        raise ValueError("cut is outside the reference sequence")
+    cut_left = _cut_index(reference, cut)
     if len(guide) != 20 or set(guide) - set("ACGT"):
         raise ValueError("guide must contain 20 DNA bases")
     if coding_strand not in (None, "+", "-"):
@@ -198,8 +252,8 @@ def load_cassettes(path):
     return cassettes
 
 
-def target_strand(annotation, target_name=None):
-    """Return the coding strand when one target gene is identifiable."""
+def target_gene(annotation, target_name=None):
+    """Return the named target or the only overlapping coding gene."""
     target = str(target_name).strip().casefold() if target_name else None
     if target:
         for gene in annotation.genes:
@@ -207,9 +261,15 @@ def target_strand(annotation, target_name=None):
             if gene.name:
                 identifiers.add(gene.name.casefold())
             if target in identifiers:
-                return gene.strand if gene.is_protein_coding else None
+                return gene
 
     coding_genes = [gene for gene in annotation.genes if gene.is_protein_coding]
     if len(coding_genes) == 1:
-        return coding_genes[0].strand
+        return coding_genes[0]
     return None
+
+
+def target_strand(annotation, target_name=None):
+    """Return the coding strand when one target gene is identifiable."""
+    gene = target_gene(annotation, target_name)
+    return gene.strand if gene is not None and gene.is_protein_coding else None

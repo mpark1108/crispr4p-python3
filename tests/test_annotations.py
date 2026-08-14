@@ -329,6 +329,7 @@ class PackagedPomBaseDataTests(unittest.TestCase):
 
         self.assertEqual("SPBPB2B2.01", gene.gene_id)
         self.assertEqual("nrg1", gene.name)
+        self.assertEqual("II", gene.chromosome)
         self.assertEqual((4457695, 4459842), (gene.start, gene.end))
 
 

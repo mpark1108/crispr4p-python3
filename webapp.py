@@ -23,6 +23,7 @@ from crispr4p.web_views import (
 
 
 PORT = 8080
+DONOR_ARM_LENGTH = 80
 
 
 @lru_cache(maxsize=1)
@@ -152,6 +153,18 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
                 n_mismatch=0,
             )
         guide_annotations = service.annotate_guides(result.guides)
+        cassette_choices = service.cassette_choices(
+            result.guides,
+            guide_annotations,
+            result.name,
+        )
+        disruption_donors = service.disruption_donors(
+            result.guides,
+            guide_annotations,
+            cassette_choices,
+            DONOR_ARM_LENGTH,
+            result.name,
+        )
 
         src_path = os.path.dirname(__file__) if os.path.dirname(__file__) else '.'
         with open(os.path.join(src_path, 'template/container_table.html'), 'r', encoding='utf-8') as fh:
@@ -161,11 +174,8 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
             result,
             guide_annotations,
             template_file,
-            cassette_choices=service.cassette_choices(
-                result.guides,
-                guide_annotations,
-                result.name,
-            ),
+            cassette_choices=cassette_choices,
+            disruption_donors=disruption_donors,
         )
 
 

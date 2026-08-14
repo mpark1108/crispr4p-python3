@@ -5,7 +5,13 @@ from pathlib import Path
 
 from .annotations import GenomeAnnotations
 from .crispr4p import NGG, PrimerDesign
-from .disruption import load_cassettes, recut_sites, target_strand
+from .disruption import (
+    build_donor,
+    load_cassettes,
+    recut_sites,
+    target_gene,
+    target_strand,
+)
 from .guides import match_guide
 from .models import DesignResult, OligoAnalysisResult, OligoMatch
 from .resources import GeneNameNotFoundError
@@ -138,7 +144,14 @@ class Crispr4pService:
                     n_mismatch=n_mismatch,
                 )
             except GeneNameNotFoundError:
-                raise legacy_error from None
+                if gene.chromosome is None:
+                    raise legacy_error from None
+                result = self._run(
+                    chromosome=gene.chromosome,
+                    start=str(gene.start),
+                    end=str(gene.end),
+                    n_mismatch=n_mismatch,
+                )
 
             return self._with_name(
                 result,
@@ -248,6 +261,11 @@ class Crispr4pService:
         resources = self._load_resources()
         choices = []
         for guide, annotation in zip(guides, annotations):
+            gene = target_gene(annotation, target_name)
+            if gene is not None and not gene.is_protein_coding:
+                choices.append(())
+                continue
+
             chromosome = resources.chromosomes[guide.chromosome]
             coding_strand = target_strand(annotation, target_name)
             choices.append(
@@ -264,6 +282,48 @@ class Crispr4pService:
                 )
             )
         return tuple(choices)
+
+    def disruption_donors(
+        self,
+        guides,
+        annotations,
+        cassettes,
+        arm_length,
+        target_name=None,
+    ):
+        """Build donors for aligned groups of safe cassette choices."""
+        guides = tuple(guides)
+        annotations = tuple(annotations)
+        cassettes = tuple(cassettes)
+        if not len(guides) == len(annotations) == len(cassettes):
+            raise ValueError("guide, annotation, and cassette counts must match")
+
+        resources = self._load_resources()
+        donors = []
+        for guide, annotation, choices in zip(
+            guides,
+            annotations,
+            cassettes,
+        ):
+            coding_strand = target_strand(annotation, target_name)
+            if coding_strand is None:
+                donors.append(())
+                continue
+
+            reference = resources.chromosomes[guide.chromosome].sequence
+            donors.append(
+                tuple(
+                    build_donor(
+                        reference,
+                        guide.cut_coordinates,
+                        cassette,
+                        coding_strand,
+                        arm_length,
+                    )
+                    for cassette in choices
+                )
+            )
+        return tuple(donors)
 
     def _run(
         self,

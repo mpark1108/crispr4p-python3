@@ -130,6 +130,7 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service.design_gene.return_value = DESIGN_RESULT
         service.annotate_guides.return_value = DESIGN_ANNOTATIONS
         service.cassette_choices.return_value = ((),)
+        service.disruption_donors.return_value = ((),)
 
         with patch.object(webapp, "create_service", return_value=service):
             result = handler.run_design_model("ade6", None, None, None)
@@ -137,6 +138,13 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service.design_gene.assert_called_once_with("ade6", n_mismatch=0)
         service.design_region.assert_not_called()
         service.annotate_guides.assert_called_once_with(DESIGN_RESULT.guides)
+        service.disruption_donors.assert_called_once_with(
+            DESIGN_RESULT.guides,
+            DESIGN_ANNOTATIONS,
+            ((),),
+            80,
+            "ade6",
+        )
         self.assertIn("<b>Name</b>=ade6", result)
         self.assertIn(GUIDE, result)
         self.assertIn("5'-HR_FORWARD-3'", result)
@@ -150,10 +158,10 @@ class TestWebRenderingCharacterization(unittest.TestCase):
             result.index("Deletion Design &mdash; Original CRISPR4P"),
             result.index("SpEDIT/pLSB Golden Gate Cloning Oligos"),
         )
-        self.assertIn('"gene_id": "SPCC1322.13"', result)
-        self.assertIn('"gene_id": "SPNCRNA.7311"', result)
-        self.assertIn('"role": "Primary target"', result)
-        self.assertIn('"region": "coding sequence (CDS)"', result)
+        self.assertIn('"gene_id":"SPCC1322.13"', result)
+        self.assertIn('"gene_id":"SPNCRNA.7311"', result)
+        self.assertIn('"role":"Primary target"', result)
+        self.assertIn('"region":"coding sequence (CDS)"', result)
         self.assertIn('"Gene viability"', result)
         self.assertNotIn("Gene viability (PomBase)", result)
         self.assertNotIn("cut also overlaps a protein-coding gene", result)
@@ -165,6 +173,7 @@ class TestWebRenderingCharacterization(unittest.TestCase):
         service.design_region.return_value = DESIGN_RESULT
         service.annotate_guides.return_value = DESIGN_ANNOTATIONS
         service.cassette_choices.return_value = ((),)
+        service.disruption_donors.return_value = ((),)
 
         with patch.object(webapp, "create_service", return_value=service):
             handler.run_design_model(None, "III", "1316337", "1317995")

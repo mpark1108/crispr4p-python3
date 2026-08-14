@@ -78,6 +78,8 @@
 
   <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('stop_cassette_design'))">Stop-Cassette Disruption Design</h3>
   <div id="stop_cassette_design" class="workflow_section">
+    <div id="stop_cassette_status"></div>
+    <div id="stop_cassette_content">
     <h5>Disruption cassette</h5>
     <div class="l_field">Candidate:</div>
     <div class="r_field"><select id="stop_cassette_menu" onchange="update_cassette();"></select></div><br>
@@ -90,6 +92,17 @@
     <div class="l_field">Reading frame 1:</div><div class="r_field" id="stop_frame_0"></div><br>
     <div class="l_field">Reading frame 2:</div><div class="r_field" id="stop_frame_1"></div><br>
     <div class="l_field">Reading frame 3:</div><div class="r_field" id="stop_frame_2"></div><br>
+
+    <h5>Disruption donor</h5>
+    <div class="l_field">Homology arm length:</div><div class="r_field" id="donor_arm_length"></div><br>
+    <div class="l_field">Left homology arm:</div><div class="r_field" id="donor_left_arm"></div><br>
+    <div class="l_field">Oriented cassette (forward reference):</div><div class="r_field" id="donor_insert"></div><br>
+    <div class="l_field">Right homology arm:</div><div class="r_field" id="donor_right_arm"></div><br>
+    <div class="l_field">Complete donor (forward reference):</div><div class="r_field" id="donor_sequence"></div><br>
+    <div class="l_field">Reverse complement:</div><div class="r_field" id="donor_reverse"></div><br>
+    <div class="l_field">Cassette length:</div><div class="r_field" id="donor_cassette_length"></div><br>
+    <div class="l_field">Total donor length:</div><div class="r_field" id="donor_total_length"></div><br>
+    </div>
   </div>
 
   <script>
@@ -354,11 +367,11 @@
     function create_cassette_menu(guide_number) {
       var menu = document.getElementById("stop_cassette_menu");
       var selected_id = menu.value;
-      var cassettes = stop_cassettes[Number(guide_number)] || [];
+      var ids = cassette_choices[Number(guide_number)] || [];
       menu.options.length = 0;
 
-      for (var index = 0; index < cassettes.length; index++) {
-        var cassette = cassettes[index];
+      for (var index = 0; index < ids.length; index++) {
+        var cassette = cassette_catalog[ids[index]];
         var option = document.createElement("option");
         option.value = cassette.id;
         option.textContent =
@@ -366,6 +379,45 @@
         option.selected = cassette.id.toString() === selected_id;
         menu.appendChild(option);
       }
+    }
+
+    function update_donor(guide_number, cassette) {
+      var donor = donor_arms[Number(guide_number)] || null;
+      var arm_length = "";
+      var left_arm = "";
+      var insert = "";
+      var right_arm = "";
+      var sequence = "";
+      var reverse = "";
+      var cassette_length = "";
+      var total_length = "";
+      if (donor && cassette) {
+        var oriented_insert = cassette.sequence;
+        if (donor.coding_strand === "-") {
+          oriented_insert = rev_complement(oriented_insert);
+        }
+        var donor_sequence =
+          donor.left_arm + oriented_insert + donor.right_arm;
+
+        arm_length = donor.arm_length + " bp each";
+        left_arm = "5'-" + donor.left_arm + "-3'";
+        insert = "5'-" + oriented_insert + "-3'";
+        right_arm = "5'-" + donor.right_arm + "-3'";
+        sequence = "5'-" + donor_sequence + "-3'";
+        reverse = "5'-" + rev_complement(donor_sequence) + "-3'";
+        cassette_length = cassette.length + " bp";
+        total_length = donor_sequence.length + " bp";
+      }
+
+      document.getElementById("donor_arm_length").textContent = arm_length;
+      document.getElementById("donor_left_arm").textContent = left_arm;
+      document.getElementById("donor_insert").textContent = insert;
+      document.getElementById("donor_right_arm").textContent = right_arm;
+      document.getElementById("donor_sequence").textContent = sequence;
+      document.getElementById("donor_reverse").textContent = reverse;
+      document.getElementById("donor_cassette_length").textContent =
+        cassette_length;
+      document.getElementById("donor_total_length").textContent = total_length;
     }
 
     function update_cassette(guide_number) {
@@ -376,15 +428,18 @@
       } else {
         create_cassette_menu(guide_number);
       }
-      var cassettes = stop_cassettes[Number(guide_number)] || [];
-      var cassette = null;
-      for (var index = 0; index < cassettes.length; index++) {
-        if (cassettes[index].id.toString() === menu.value) {
-          cassette = cassettes[index];
-          break;
-        }
-      }
+      var cassette = cassette_catalog[menu.value] || null;
       var annotation = annotation_rows[Number(guide_number)];
+      var non_coding = annotation && annotation.coding_target === false;
+      document.getElementById("stop_cassette_status").textContent =
+        non_coding ? "Selected target is non-coding." : "";
+      document.getElementById("stop_cassette_content").style.display =
+        non_coding ? "none" : "";
+      if (non_coding) {
+        menu.options.length = 0;
+        update_donor(guide_number, null);
+        return;
+      }
       var strand = annotation ? annotation.coding_strand : null;
 
       document.getElementById("target_coding_strand").textContent =
@@ -398,6 +453,7 @@
         document.getElementById("stop_frame_0").textContent = "";
         document.getElementById("stop_frame_1").textContent = "";
         document.getElementById("stop_frame_2").textContent = "";
+        update_donor(guide_number, null);
         return;
       }
 
@@ -413,6 +469,7 @@
       document.getElementById("stop_frame_0").textContent = cassette.frames[0];
       document.getElementById("stop_frame_1").textContent = cassette.frames[1];
       document.getElementById("stop_frame_2").textContent = cassette.frames[2];
+      update_donor(guide_number, cassette);
     }
 
     function update_primer(number) {
@@ -437,7 +494,10 @@
     var rows = %(json_table)s;
     var annotation_rows = %(annotation_json)s;
     var spedit_rows = %(spedit_json)s;
-    var stop_cassettes = %(cassette_json)s;
+    var cassette_data = %(cassette_json)s;
+    var cassette_catalog = cassette_data.catalog;
+    var cassette_choices = cassette_data.choices;
+    var donor_arms = %(donor_json)s;
 
     function create_table() {
       var table = document.getElementById("posTable");

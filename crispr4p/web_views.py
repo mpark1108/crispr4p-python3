@@ -182,14 +182,15 @@ def annotation_rows(guides, annotations, target_name=None):
         for context in annotation.transcripts:
             grouped_contexts.setdefault(context.gene.gene_id, []).append(context)
 
-        target_gene_id = next(
+        target_gene = next(
             (
-                contexts[0].gene.gene_id
+                contexts[0].gene
                 for contexts in grouped_contexts.values()
                 if _is_target(target_name, contexts[0].gene)
             ),
             None,
         )
+        target_gene_id = target_gene.gene_id if target_gene else None
 
         genes = []
         for contexts in grouped_contexts.values():
@@ -220,6 +221,9 @@ def annotation_rows(guides, annotations, target_name=None):
                 "cut_coordinates": list(guide.cut_coordinates),
                 "strand": "+" if guide.strand == 1 else "-",
                 "coding_strand": target_strand(annotation, target_name),
+                "coding_target": (
+                    target_gene.is_protein_coding if target_gene else None
+                ),
                 "is_intergenic": annotation.is_intergenic,
                 "gene_count": len(annotation.genes),
                 "genes": genes,
@@ -270,11 +274,14 @@ def spedit_rows(table_pos_grna) -> list[dict]:
     return candidates
 
 
-def cassette_rows(cassette_choices):
-    """Build browser data for the stop-cassette menu."""
-    return [
-        [
-            {
+def cassette_data(cassette_choices):
+    """Build a shared cassette catalog and guide-specific choice lists."""
+    catalog = {}
+    choices_by_guide = []
+    for choices in cassette_choices:
+        ids = []
+        for cassette in choices:
+            row = {
                 "id": cassette.id,
                 "sequence": cassette.sequence,
                 "length": len(cassette.sequence),
@@ -289,10 +296,43 @@ def cassette_rows(cassette_choices):
                     for frame in cassette.frames
                 ],
             }
-            for cassette in choices
-        ]
-        for choices in cassette_choices
-    ]
+            previous = catalog.setdefault(str(cassette.id), row)
+            if previous != row:
+                raise ValueError("cassette IDs must identify one sequence")
+            ids.append(cassette.id)
+        choices_by_guide.append(ids)
+    return {"catalog": catalog, "choices": choices_by_guide}
+
+
+def donor_data(donor_choices):
+    """Build one shared-arm record per guide."""
+    rows = []
+    for choices in donor_choices:
+        if not choices:
+            rows.append(None)
+            continue
+
+        first = choices[0]
+        row = {
+            "coding_strand": first.coding_strand,
+            "arm_length": first.arm_length,
+            "left_arm": first.left_arm,
+            "right_arm": first.right_arm,
+        }
+        for donor in choices[1:]:
+            if (
+                donor.coding_strand != first.coding_strand
+                or donor.arm_length != first.arm_length
+                or donor.left_arm != first.left_arm
+                or donor.right_arm != first.right_arm
+            ):
+                raise ValueError("donors for one guide must share homology arms")
+        rows.append(row)
+    return rows
+
+
+def _compact_json(value):
+    return json.dumps(value, separators=(",", ":"))
 
 
 def render_query_error():
@@ -407,6 +447,7 @@ def render_design(
     guide_annotations,
     template_text,
     cassette_choices=(),
+    disruption_donors=(),
 ):
     """Render a design result with the HTML template."""
     primer = result.checking_primers[0] if result.checking_primers else {}
@@ -436,17 +477,18 @@ def render_design(
             primer.get('negative_result', '-')
         ) + " (bp)",
     }
-    context['json_table'] = json.dumps(result.guide_table)
-    context['spedit_json'] = json.dumps(
+    context['json_table'] = _compact_json(result.guide_table)
+    context['spedit_json'] = _compact_json(
         spedit_rows(result.guide_table)
     )
-    context['annotation_json'] = json.dumps(
+    context['annotation_json'] = _compact_json(
         annotation_rows(
             result.guides,
             guide_annotations,
             target_name=result.name,
         )
     )
-    context['cassette_json'] = json.dumps(cassette_rows(cassette_choices))
+    context['cassette_json'] = _compact_json(cassette_data(cassette_choices))
+    context['donor_json'] = _compact_json(donor_data(disruption_donors))
 
     return template_text % context

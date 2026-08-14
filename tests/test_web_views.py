@@ -136,14 +136,14 @@ class TestResultViews(unittest.TestCase):
         )
 
         self.assertEqual(
-            "8530b811d3e33aea63441624ac7f2a892e4f68900308f675025757bef0da4229",
+            "f5b0ffda33ccafe7a58e5f63ab99ce3afb5bfbf5c9a965546c3926fab7a3f3a0",
             hashlib.sha256(result.encode("utf-8")).hexdigest(),
         )
         self.assertIn("Selected sgRNA and Cut Site", result)
         self.assertIn("Deletion Design &mdash; Original CRISPR4P", result)
         self.assertIn("SpEDIT/pLSB Golden Gate Cloning Oligos", result)
-        self.assertIn('"gene_id": "SPCC1322.13"', result)
-        self.assertIn('"viability": "unknown"', result)
+        self.assertIn('"gene_id":"SPCC1322.13"', result)
+        self.assertIn('"viability":"unknown"', result)
 
 
 if __name__ == "__main__":

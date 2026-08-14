@@ -89,6 +89,7 @@ class GeneAnnotation:
     end: int
     strand: str
     viability: str | None
+    chromosome: str | None = None
 
     @property
     def is_protein_coding(self):
@@ -469,6 +470,7 @@ class GenomeAnnotations:
             end=gene.end,
             strand=gene.strand,
             viability=self._viability.get(gene.gene_id),
+            chromosome=gene.chromosome,
         )
 
     def _base(self, chromosome, position):
