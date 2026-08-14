@@ -1,8 +1,11 @@
 import json
 import unittest
+from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
+import webapp
 from crispr4p.annotations import GeneAnnotation, GenomeAnnotations
 from crispr4p.disruption import (
     StopCassette,
@@ -14,6 +17,11 @@ from crispr4p.disruption import (
     target_strand,
 )
 from crispr4p.models import DesignResult
+from crispr4p.primers import (
+    InsertionPrimerPair,
+    PrimerNotFoundError,
+    insertion_primers,
+)
 from crispr4p.resources import read_fasta
 from crispr4p.service import Crispr4pService
 from crispr4p.spedit import reverse_complement
@@ -167,6 +175,131 @@ class DisruptionDesignTests(unittest.TestCase):
                 "+",
                 80,
             )
+
+    def test_insertion_primer_inputs(self):
+        answer = {
+            "PRIMER_PAIR_NUM_RETURNED": 1,
+            "PRIMER_LEFT_0_SEQUENCE": "FORWARD",
+            "PRIMER_RIGHT_0_SEQUENCE": "REVERSE",
+            "PRIMER_LEFT_0_TM": 59.4,
+            "PRIMER_RIGHT_0_TM": 60.2,
+            "PRIMER_PAIR_0_PRODUCT_SIZE": 250,
+        }
+        designer = Mock(return_value=answer)
+        pair = insertion_primers(
+            "A" * 300 + "C" * 300,
+            (300, 301),
+            primer_designer=designer,
+        )
+        sequence_args, global_args = designer.call_args.args
+
+        self.assertEqual(
+            "A" * 300 + "C" * 300,
+            sequence_args["SEQUENCE_TEMPLATE"],
+        )
+        self.assertEqual(
+            [[220, 160]],
+            sequence_args["SEQUENCE_EXCLUDED_REGION"],
+        )
+        self.assertEqual(
+            [[0, 220, 380, 220]],
+            sequence_args["SEQUENCE_PRIMER_PAIR_OK_REGION_LIST"],
+        )
+        self.assertEqual(
+            [[200, 300]],
+            global_args["PRIMER_PRODUCT_SIZE_RANGE"],
+        )
+        self.assertEqual(0, global_args["PRIMER_PICK_INTERNAL_OLIGO"])
+        self.assertEqual(1, global_args["PRIMER_NUM_RETURN"])
+        self.assertEqual("FORWARD", pair.forward)
+        self.assertEqual("REVERSE", pair.reverse)
+        self.assertEqual(250, pair.wt_product_size)
+        self.assertEqual(273, pair.disrupted_product_size)
+
+        no_pair = Mock(return_value={"PRIMER_PAIR_NUM_RETURNED": 0})
+        with self.assertRaises(PrimerNotFoundError):
+            insertion_primers(
+                "A" * 300 + "C" * 300,
+                (300, 301),
+                primer_designer=no_pair,
+            )
+
+    def test_real_insertion_primers(self):
+        service = Crispr4pService.from_project_data()
+        guide = service.design_gene("ade6").guides[0]
+        pair = service.insertion_primers(
+            guide.chromosome,
+            guide.cut_coordinates,
+        )
+        cut = guide.cut_coordinates[0]
+
+        self.assertEqual("GCAACTCTGCGATGCATTCA", pair.forward)
+        self.assertEqual("TGCGTACTACCATCACTGCA", pair.reverse)
+        self.assertAlmostEqual(59.551009575121896, pair.forward_tm)
+        self.assertAlmostEqual(59.10793666168439, pair.reverse_tm)
+        self.assertEqual(298, pair.wt_product_size)
+        self.assertEqual(321, pair.disrupted_product_size)
+        self.assertNotEqual(
+            -1,
+            self.reference.find(pair.forward, cut - 300, cut - 80),
+        )
+        self.assertNotEqual(
+            -1,
+            self.reference.find(
+                reverse_complement(pair.reverse),
+                cut + 80,
+                cut + 300,
+            ),
+        )
+
+    def test_insertion_primer_endpoint(self):
+        service = Mock()
+        service.insertion_primers.return_value = InsertionPrimerPair(
+            forward="FORWARD",
+            reverse="REVERSE",
+            forward_tm=59.4,
+            reverse_tm=60.2,
+            wt_product_size=250,
+            insert_length=23,
+        )
+        handler = webapp.CRISPR4PHandler.__new__(webapp.CRISPR4PHandler)
+        handler.send_response = Mock()
+        handler.send_header = Mock()
+        handler.end_headers = Mock()
+        handler.wfile = BytesIO()
+
+        with patch.object(webapp, "create_service", return_value=service):
+            handler.serve_insertion_primers(
+                {
+                    "chromosome": ["III"],
+                    "cut_left": ["1316791"],
+                    "cut_right": ["1316792"],
+                }
+            )
+
+        service.insertion_primers.assert_called_once_with(
+            "III",
+            (1316791, 1316792),
+            arm_length=80,
+            insert_length=23,
+            window=300,
+        )
+        handler.send_response.assert_called_once_with(200)
+        self.assertIn(
+            ("Cache-Control", "no-store"),
+            [call.args for call in handler.send_header.call_args_list],
+        )
+        self.assertEqual(
+            {
+                "forward": "FORWARD",
+                "reverse": "REVERSE",
+                "forward_tm": 59.4,
+                "reverse_tm": 60.2,
+                "wt_product_size": 250,
+                "disrupted_product_size": 273,
+            },
+            json.loads(handler.wfile.getvalue()),
+        )
 
     def test_minus_strand_donor(self):
         service = Crispr4pService.from_project_data()
@@ -417,6 +550,13 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertNotIn(OLD_FIRST, page)
         self.assertNotIn("Cassette sequence (forward reference)", page)
         self.assertNotIn("computational candidate", page.lower())
+        self.assertIn("Insertion-checking primers", page)
+        self.assertIn('id="insertion_primer_forward"', page)
+        self.assertIn("Expected WT product:", page)
+        self.assertIn("Expected disrupted product:", page)
+        self.assertIn('fetch("/insertion-primers?"', page)
+        self.assertIn("var insertion_primer_cache = {};", page)
+        self.assertIn("update_insertion_primers(index);", page)
 
 
 if __name__ == "__main__":

@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 # Local CRISPR4P web server
 
+import json
 import os
 import urllib.parse
 import sys
@@ -11,6 +12,7 @@ from crispr4p.service import (
     Crispr4pService,
     GeneNameNotFoundError,
     OligoLengthError,
+    PrimerNotFoundError,
 )
 from crispr4p.web_views import (
     render_design,
@@ -24,6 +26,8 @@ from crispr4p.web_views import (
 
 PORT = 8080
 DONOR_ARM_LENGTH = 80
+CASSETTE_LENGTH = 23
+PRIMER_WINDOW = 300
 
 
 @lru_cache(maxsize=1)
@@ -41,6 +45,10 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
 
         if path == "/" or path == "/index.html" or path == "/webapp.py":
             self.serve_form()
+        elif path == "/insertion-primers":
+            self.serve_insertion_primers(
+                urllib.parse.parse_qs(parsed_path.query)
+            )
         elif path.startswith("/css/"):
             self.serve_css(path)
         else:
@@ -91,6 +99,50 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
                 self.send_error(500, "Error reading CSS file")
         else:
             self.send_error(404, "CSS File not found")
+
+    def serve_json(self, payload, status=200):
+        content = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-type", "application/json; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Length", str(len(content)))
+        self.end_headers()
+        self.wfile.write(content)
+
+    def serve_insertion_primers(self, query):
+        try:
+            chromosome = query["chromosome"][0].strip()
+            cut = (
+                int(query["cut_left"][0]),
+                int(query["cut_right"][0]),
+            )
+            pair = create_service().insertion_primers(
+                chromosome,
+                cut,
+                arm_length=DONOR_ARM_LENGTH,
+                insert_length=CASSETTE_LENGTH,
+                window=PRIMER_WINDOW,
+            )
+        except PrimerNotFoundError:
+            self.serve_json(
+                {"error": "No insertion-checking primer pair was found."},
+                status=422,
+            )
+            return
+        except (KeyError, IndexError, ValueError) as error:
+            self.serve_json({"error": str(error)}, status=400)
+            return
+
+        self.serve_json(
+            {
+                "forward": pair.forward,
+                "reverse": pair.reverse,
+                "forward_tm": pair.forward_tm,
+                "reverse_tm": pair.reverse_tm,
+                "wt_product_size": pair.wt_product_size,
+                "disrupted_product_size": pair.disrupted_product_size,
+            }
+        )
 
     def process_post(self):
         content_length = int(self.headers.get('Content-Length', 0))

@@ -84,8 +84,7 @@ transcript: SPNCRNA.7311.1  strand: -
 region block: non-coding exon 1316304-1317821 (1518 bp)
 cut position within block: 488 bp toward lower coordinates; 1030 bp toward higher coordinates
 next upstream/5' region (higher genomic coordinates): none within transcript
-next downstream/3' region (lower genomic coordinates): none within transcript
-distance 0 bp means that the named region touches the cut boundary""",
+next downstream/3' region (lower genomic coordinates): none within transcript""",
             format_cut(result),
         )
 

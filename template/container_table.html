@@ -102,6 +102,15 @@
     <div class="l_field">Reverse complement:</div><div class="r_field" id="donor_reverse"></div><br>
     <div class="l_field">Cassette length:</div><div class="r_field" id="donor_cassette_length"></div><br>
     <div class="l_field">Total donor length:</div><div class="r_field" id="donor_total_length"></div><br>
+
+    <h5>Insertion-checking primers</h5>
+    <div id="insertion_primer_status"></div>
+    <div class="l_field">CkFw:</div><div class="r_field" id="insertion_primer_forward"></div><br>
+    <div class="l_field">CkFw Tm:</div><div class="r_field" id="insertion_primer_forward_tm"></div><br>
+    <div class="l_field">CkRv:</div><div class="r_field" id="insertion_primer_reverse"></div><br>
+    <div class="l_field">CkRv Tm:</div><div class="r_field" id="insertion_primer_reverse_tm"></div><br>
+    <div class="l_field">Expected WT product:</div><div class="r_field" id="insertion_primer_wt_size"></div><br>
+    <div class="l_field">Expected disrupted product:</div><div class="r_field" id="insertion_primer_disrupted_size"></div><br>
     </div>
   </div>
 
@@ -313,11 +322,6 @@
         "Annotation source: packaged PomBase GFF3 and gene viability snapshot.";
       details.appendChild(provenance);
 
-      var distance_note = document.createElement("p");
-      distance_note.className = "annotation_provenance";
-      distance_note.textContent =
-        "A distance of 0 bp means that the named region touches the cut boundary.";
-      details.appendChild(distance_note);
     }
 
     function update_spedit(number) {
@@ -472,6 +476,86 @@
       update_donor(guide_number, cassette);
     }
 
+    function show_insertion_primers(pair) {
+      document.getElementById("insertion_primer_status").textContent = "";
+      document.getElementById("insertion_primer_forward").textContent =
+        "5'-" + pair.forward + "-3'";
+      document.getElementById("insertion_primer_forward_tm").textContent =
+        Math.round(pair.forward_tm) + " °C";
+      document.getElementById("insertion_primer_reverse").textContent =
+        "5'-" + pair.reverse + "-3'";
+      document.getElementById("insertion_primer_reverse_tm").textContent =
+        Math.round(pair.reverse_tm) + " °C";
+      document.getElementById("insertion_primer_wt_size").textContent =
+        pair.wt_product_size + " bp";
+      document.getElementById("insertion_primer_disrupted_size").textContent =
+        pair.disrupted_product_size + " bp";
+    }
+
+    function clear_insertion_primers(message) {
+      document.getElementById("insertion_primer_status").textContent =
+        message || "";
+      document.getElementById("insertion_primer_forward").textContent = "";
+      document.getElementById("insertion_primer_forward_tm").textContent = "";
+      document.getElementById("insertion_primer_reverse").textContent = "";
+      document.getElementById("insertion_primer_reverse_tm").textContent = "";
+      document.getElementById("insertion_primer_wt_size").textContent = "";
+      document.getElementById("insertion_primer_disrupted_size").textContent =
+        "";
+    }
+
+    function selected_guide_number() {
+      var selected = document.querySelector('input[name="gRNA"]:checked');
+      return selected ? Number(selected.value) : null;
+    }
+
+    function update_insertion_primers(guide_number) {
+      var index = Number(guide_number);
+      var annotation = annotation_rows[index];
+      if (!annotation || !donor_arms[index]) {
+        clear_insertion_primers();
+        return;
+      }
+      if (insertion_primer_cache[index]) {
+        show_insertion_primers(insertion_primer_cache[index]);
+        return;
+      }
+      if (insertion_primer_requests[index]) {
+        clear_insertion_primers();
+        return;
+      }
+
+      clear_insertion_primers();
+      insertion_primer_requests[index] = true;
+      var params = new URLSearchParams({
+        chromosome: annotation.chromosome,
+        cut_left: annotation.cut_coordinates[0],
+        cut_right: annotation.cut_coordinates[1]
+      });
+      fetch("/insertion-primers?" + params.toString(), {cache: "no-store"})
+        .then(function(response) {
+          return response.json().then(function(data) {
+            if (!response.ok) {
+              throw new Error(data.error || "Checking primers are unavailable.");
+            }
+            return data;
+          });
+        })
+        .then(function(pair) {
+          insertion_primer_cache[index] = pair;
+          delete insertion_primer_requests[index];
+          if (selected_guide_number() === index) {
+            show_insertion_primers(pair);
+          }
+        })
+        .catch(function(error) {
+          delete insertion_primer_requests[index];
+          if (selected_guide_number() === index) {
+            clear_insertion_primers(error.message);
+          }
+        });
+    }
+
     function update_primer(number) {
       var index = Number(number);
       var primer = rows[index][1];
@@ -489,6 +573,7 @@
       update_annotation(index);
       update_spedit(index);
       update_cassette(index);
+      update_insertion_primers(index);
     }
 
     var rows = %(json_table)s;
@@ -498,6 +583,8 @@
     var cassette_catalog = cassette_data.catalog;
     var cassette_choices = cassette_data.choices;
     var donor_arms = %(donor_json)s;
+    var insertion_primer_cache = {};
+    var insertion_primer_requests = {};
 
     function create_table() {
       var table = document.getElementById("posTable");
