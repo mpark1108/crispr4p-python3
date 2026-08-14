@@ -1,199 +1,391 @@
-<div id ="search_content">
+<div id="search_content">
   <div id="search_summary">
-      <h4>Your target region is:</h4>
-      <b>Name</b>=%(name)s<br>
-      <b>chromosome</b>=%(chromosome)s<br>
-      <b>Coordinates</b>=%(start)s to %(end)s<br>
+    <h4>Your target region is:</h4>
+    <b>Name</b>=%(name)s<br>
+    <b>chromosome</b>=%(chromosome)s<br>
+    <b>Coordinates</b>=%(start)s to %(end)s<br>
   </div>
 
-  <h3 class="toggle_header"  onclick="toggle_interface(primers_table)">Suggested sgRNAs</h3>
+  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('primers_table'))">Suggested sgRNAs</h3>
   <div id="primers_table">
-  <table id="posTable">
-  <tbody><tr><th></th><th id="grna_column">sgRNA</th><th>8</th><th>10</th><th>12</th><th>14</th><th>16</th><th>18</th><th>20</th></tr>
-  </tbody></table>
+    <table id="posTable">
+      <tbody>
+        <tr>
+          <th></th><th id="grna_column">sgRNA</th><th>8</th><th>10</th>
+          <th>12</th><th>14</th><th>16</th><th>18</th><th>20</th>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('selected_guide_and_cut'))">Selected sgRNA and Cut Site</h3>
+  <div id="selected_guide_and_cut" class="workflow_section">
+    <div class="l_field">sgRNA:</div><div class="r_field" id="selected_guide"></div><br>
+    <div class="l_field">PAM:</div><div class="r_field" id="selected_pam"></div><br>
+    <div class="l_field">PAM coordinates (1-based, inclusive):</div><div class="r_field" id="selected_pam_coordinates"></div><br>
+    <div class="l_field">Guide strand:</div><div class="r_field" id="selected_guide_strand"></div><br>
+    <div class="l_field">Cas9 cut:</div><div class="r_field" id="selected_cut"></div><br>
+
+    <h5>Cut-site annotation</h5>
+    <div id="cut_annotation_summary" class="annotation_summary"></div>
+    <details id="cut_annotation_details" class="annotation_details">
+      <summary>More cut-site details</summary>
+      <div id="cut_annotation_detail_content"></div>
+    </details>
+    <div id="cut_annotation_error" class="annotation_warning"></div>
+  </div>
+
+  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('deletion_design'))">Deletion Design &mdash; Original CRISPR4P</h3>
+  <div id="deletion_design" class="workflow_section">
+    <h5>Traditional sgRNA cloning oligos</h5>
+    <div class="l_field">Traditional cloning sgFw:</div><div class="r_field" id="primer_forward"></div><br>
+    <div class="l_field">Traditional cloning sgRv:</div><div class="r_field" id="primer_reverse"></div><br>
+
+    <h5>Ligation-free sgRNA cloning oligos</h5>
+    <div class="l_field">Ligation-free sgFw:</div><div class="r_field" id="overlapping_primer_forward"></div><br>
+    <div class="l_field">Ligation-free sgRv:</div><div class="r_field" id="overlapping_primer_reverse"></div><br>
+
+    <h5>Deletion HR-template primers</h5>
+    <div class="l_field">HRFw:</div><div class="r_field">5'-%(hrfw)s-3'</div><br>
+    <div class="l_field">HRRv:</div><div class="r_field">5'-%(hrrv)s-3'</div><br>
+
+    <h5>Deletion-checking primers</h5>
+    <div class="l_field">CkFw:</div><div class="r_field">5'-%(primer_left)s-3'</div><br>
+    <div class="l_field">CkFw Tm:</div><div class="r_field">%(left_tm)s</div><br>
+    <div class="l_field">CkRv:</div><div class="r_field">5'-%(primer_right)s-3'</div><br>
+    <div class="l_field">CkRv Tm:</div><div class="r_field">%(right_tm)s</div><br>
+    <div class="l_field">PCR product size with deletion:</div><div class="r_field">%(deleted_dna_size)s</div><br>
+    <div class="l_field">PCR product size without deletion:</div><div class="r_field">%(negative_result_size)s</div><br>
+    <div class="l_field">Region surrounding deletion junction:</div><div class="r_field">%(deleted_dna)s</div><br>
+  </div>
+
+  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('spedit_oligos'))">SpEDIT/pLSB Golden Gate Cloning Oligos</h3>
+  <div id="spedit_oligos" class="workflow_section">
+    <div class="l_field">Selected sgRNA:</div>
+    <div class="r_field" id="spedit_guide"></div><br>
+
+    <div class="l_field">SpEDIT forward oligo, 52 nt:</div>
+    <div class="r_field" id="spedit_forward"></div><br>
+
+    <div class="l_field">SpEDIT reverse oligo, 52 nt:</div>
+    <div class="r_field" id="spedit_reverse"></div><br>
+
+    <div class="l_field">Internal BsaI site check:</div>
+    <div class="r_field" id="spedit_bsai_warning"></div><br>
+
+    <div id="spedit_error" class="annotation_warning"></div>
+  </div>
+
   <script>
+    var actg = {"A": "T", "C": "G", "T": "A", "G": "C"};
 
-     var actg = {"A": "T", "C": "G", "T": "A", "G": "C"};
-     var rev_complement = function(d){
-          var newStr = "";
-          for (var i = d.length - 1; i >= 0; i--) {
-              newStr += actg[d[i]];
-          };
-          return newStr;
-     };
+    var rev_complement = function(sequence) {
+      var new_sequence = "";
+      for (var index = sequence.length - 1; index >= 0; index--) {
+        new_sequence += actg[sequence[index]];
+      }
+      return new_sequence;
+    };
 
-                        function update_primer(number)
-                        {
-                            var index = Number(number);
-                            var primer = rows[index][1];
+    function clear_element(element) {
+      while (element.firstChild) {
+        element.removeChild(element.firstChild);
+      }
+    }
 
-                            document.getElementById('primer_algo').textContent =
-                                "5'-" + primer[0] + "-3'";
+    function append_field(parent, label, value, class_name) {
+      var row = document.createElement("div");
+      row.className = "annotation_field" + (class_name ? " " + class_name : "");
 
-                            document.getElementById('pam').textContent = primer[5];
+      var label_element = document.createElement("strong");
+      label_element.textContent = label + ": ";
+      row.appendChild(label_element);
 
-                            document.getElementById('primer_forward').textContent =
-                                "5'-" + primer[1] + "-3'";
+      var value_element = document.createElement("span");
+      value_element.textContent = value;
+      row.appendChild(value_element);
+      parent.appendChild(row);
+    }
 
-                            document.getElementById('primer_reverse').textContent =
-                                "5'-" + primer[2] + "-3'";
+    function append_heading(parent, text, class_name) {
+      var heading = document.createElement("h5");
+      heading.textContent = text;
+      if (class_name) {
+        heading.className = class_name;
+      }
+      parent.appendChild(heading);
+    }
 
-                            document.getElementById('overlapping_primer_forward').textContent =
-                                "5'-" + primer[0] + primer[1].substring(10) + "-3'";
+    function format_block(block) {
+      if (!block) {
+        return "intergenic";
+      }
+      return block.label + " " + block.start + "-" + block.end +
+        " (" + block.length + " bp)";
+    }
 
-                            document.getElementById('overlapping_primer_reverse').textContent =
-                                "5'-" + rev_complement(primer[0]) +
-                                 primer[2].substring(10) + "-3'";
+    function format_neighbor(neighbor) {
+      if (!neighbor) {
+        return "none within transcript";
+      }
+      return format_block(neighbor.block) + "; " + neighbor.distance +
+        " bp from cut";
+    }
 
-                            document.getElementById('primer_pos').textContent =
-                                primer[3][0] + " - " + primer[3][1];
+    function update_annotation(number) {
+      var candidate = annotation_rows[Number(number)];
+      var summary = document.getElementById("cut_annotation_summary");
+      var details = document.getElementById("cut_annotation_detail_content");
+      var error = document.getElementById("cut_annotation_error");
+      clear_element(summary);
+      clear_element(details);
+      error.textContent = "";
 
-                            document.getElementById('primer_strand').textContent =
-                                primer[4];
+      if (!candidate) {
+        document.getElementById("selected_guide").textContent = "";
+        document.getElementById("selected_pam").textContent = "";
+        document.getElementById("selected_pam_coordinates").textContent = "";
+        document.getElementById("selected_guide_strand").textContent = "";
+        document.getElementById("selected_cut").textContent = "";
+        error.textContent = "No cut-site annotation is available for this candidate.";
+        return;
+      }
 
-                            update_spedit(index);
-                        }
+      document.getElementById("selected_guide").textContent =
+        "5'-" + candidate.seed + "-3'";
+      document.getElementById("selected_pam").textContent = candidate.pam;
+      document.getElementById("selected_pam_coordinates").textContent =
+        candidate.chromosome + ":" + candidate.pam_coordinates[0] + "-" +
+        candidate.pam_coordinates[1];
+      document.getElementById("selected_guide_strand").textContent =
+        candidate.strand;
+      document.getElementById("selected_cut").textContent =
+        "between " + candidate.chromosome + ":" + candidate.cut_coordinates[0] +
+        " and " + candidate.chromosome + ":" + candidate.cut_coordinates[1];
 
-			function update_spedit(number)
-			{
-			    var candidate = spedit_rows[Number(number)];
+      if (candidate.is_intergenic) {
+        append_field(summary, "Region", "intergenic on both sides of cut");
+        for (var nearby_index = 0; nearby_index < candidate.nearest_genes.length; nearby_index++) {
+          var nearby = candidate.nearest_genes[nearby_index];
+          append_field(
+            summary,
+            nearby.direction + " nearest gene",
+            nearby.display_name + "; " + nearby.distance + " bp from cut"
+          );
+          append_field(summary, "Gene viability", nearby.viability);
+        }
+      } else {
+        if (candidate.gene_count > 1) {
+          append_field(
+            summary,
+            "Overlap",
+            "cut overlaps " + candidate.gene_count + " genes"
+          );
+        }
 
-			    var guideElement =
-			        document.getElementById('spedit_guide');
+        for (var gene_index = 0; gene_index < candidate.genes.length; gene_index++) {
+          var gene = candidate.genes[gene_index];
+          append_heading(
+            summary,
+            gene.role + ": " + gene.display_name
+          );
 
-			    var forwardElement =
-			        document.getElementById('spedit_forward');
+          for (var region_index = 0; region_index < gene.contexts.length; region_index++) {
+            var region = gene.contexts[region_index];
+            var region_label = "Region";
+            if (gene.contexts.length > 1) {
+              region_label += " (" + region.transcript_id + ")";
+            }
+            append_field(
+              summary,
+              region_label,
+              region.region
+            );
+            if (region.cds) {
+              append_field(
+                summary,
+                "CDS position",
+                "base " + region.cds.base + "/" + region.cds.total +
+                  " (" + region.cds.percent.toFixed(1) + "%%)"
+              );
+            }
+          }
+          append_field(
+            summary,
+            "Gene viability",
+            gene.viability
+          );
+        }
+      }
 
-			    var reverseElement =
-			        document.getElementById('spedit_reverse');
+      for (var detail_gene_index = 0; detail_gene_index < candidate.genes.length; detail_gene_index++) {
+        var detail_gene = candidate.genes[detail_gene_index];
+        append_heading(details, detail_gene.display_name);
+        append_field(details, "Gene type", detail_gene.gene_type);
+        append_field(details, "Gene viability", detail_gene.viability);
 
-			    var warningElement =
-			        document.getElementById('spedit_bsai_warning');
+        for (var context_index = 0; context_index < detail_gene.contexts.length; context_index++) {
+          var context = detail_gene.contexts[context_index];
+          var transcript_section = document.createElement("div");
+          transcript_section.className = "annotation_transcript";
+          append_heading(
+            transcript_section,
+            "Transcript " + context.transcript_id
+          );
+          append_field(transcript_section, "Transcript type", context.transcript_type);
+          append_field(transcript_section, "Transcript strand", context.transcript_strand);
 
-			    var errorElement =
-			        document.getElementById('spedit_error');
+          if (context.crosses_boundary) {
+            append_field(
+              transcript_section,
+              "Cut crosses region boundary",
+              format_block(context.left_block) + " → " +
+                format_block(context.right_block)
+            );
+          } else {
+            append_field(transcript_section, "Region block", format_block(context.block));
+            append_field(
+              transcript_section,
+              "Cut position within block",
+              context.cut_position.five_prime_bases + " bp toward 5′ end; " +
+                context.cut_position.three_prime_bases + " bp toward 3′ end"
+            );
+          }
 
-			    if (!candidate) {
-			        guideElement.textContent = "";
-			        forwardElement.textContent = "";
-			        reverseElement.textContent = "";
-			        warningElement.textContent = "";
-			        errorElement.textContent =
-			            "No SpEDIT information is available for this candidate.";
-			        return;
-			    }
+          append_field(
+            transcript_section,
+            "Next upstream/5′ region",
+            format_neighbor(context.upstream)
+          );
+          append_field(
+            transcript_section,
+            "Next downstream/3′ region",
+            format_neighbor(context.downstream)
+          );
+          details.appendChild(transcript_section);
+        }
+      }
 
-			    if (candidate.error) {
-			        guideElement.textContent = candidate.guide || "";
-			        forwardElement.textContent = "";
-			        reverseElement.textContent = "";
-			        warningElement.textContent = "";
-			        errorElement.textContent = candidate.error;
-			        return;
-			    }
+      if (candidate.is_intergenic) {
+        for (var detail_nearby_index = 0; detail_nearby_index < candidate.nearest_genes.length; detail_nearby_index++) {
+          var detail_nearby = candidate.nearest_genes[detail_nearby_index];
+          append_heading(details, detail_nearby.direction + " nearest gene");
+          append_field(details, "Gene", detail_nearby.display_name);
+          append_field(details, "Gene type", detail_nearby.gene_type);
+          append_field(details, "Coordinates", detail_nearby.start + "-" + detail_nearby.end);
+          append_field(details, "Distance from cut", detail_nearby.distance + " bp");
+          append_field(details, "Gene viability", detail_nearby.viability);
+        }
+      }
 
-			    guideElement.textContent =
-			        "5'-" + candidate.guide + "-3'";
+      var provenance = document.createElement("p");
+      provenance.className = "annotation_provenance";
+      provenance.textContent =
+        "Annotation source: packaged PomBase GFF3 and gene viability snapshot.";
+      details.appendChild(provenance);
 
-			    forwardElement.textContent =
-			        "5'-" + candidate.forward + "-3'";
+      var distance_note = document.createElement("p");
+      distance_note.className = "annotation_provenance";
+      distance_note.textContent =
+        "A distance of 0 bp means that the named region touches the cut boundary.";
+      details.appendChild(distance_note);
+    }
 
-			    reverseElement.textContent =
-			        "5'-" + candidate.reverse + "-3'";
+    function update_spedit(number) {
+      var candidate = spedit_rows[Number(number)];
+      var guide_element = document.getElementById("spedit_guide");
+      var forward_element = document.getElementById("spedit_forward");
+      var reverse_element = document.getElementById("spedit_reverse");
+      var warning_element = document.getElementById("spedit_bsai_warning");
+      var error_element = document.getElementById("spedit_error");
 
-			    errorElement.textContent = "";
+      if (!candidate) {
+        guide_element.textContent = "";
+        forward_element.textContent = "";
+        reverse_element.textContent = "";
+        warning_element.textContent = "";
+        error_element.textContent =
+          "No SpEDIT information is available for this candidate.";
+        return;
+      }
 
-			    if (candidate.has_internal_bsai) {
-			        warningElement.textContent =
-			            "Warning: this guide contains an internal BsaI " +
-			            "recognition site.";
+      if (candidate.error) {
+        guide_element.textContent = candidate.guide || "";
+        forward_element.textContent = "";
+        reverse_element.textContent = "";
+        warning_element.textContent = "";
+        error_element.textContent = candidate.error;
+        return;
+      }
 
-			        warningElement.style.color = "#b00020";
-			        warningElement.style.fontWeight = "bold";
-			    } else {
-			        warningElement.textContent =
-			            "No internal BsaI site detected.";
+      guide_element.textContent = "5'-" + candidate.guide + "-3'";
+      forward_element.textContent = "5'-" + candidate.forward + "-3'";
+      reverse_element.textContent = "5'-" + candidate.reverse + "-3'";
+      error_element.textContent = "";
 
-			        warningElement.style.color = "";
-			        warningElement.style.fontWeight = "";
-			    }
-			}
+      if (candidate.has_internal_bsai) {
+        warning_element.textContent =
+          "Warning: this guide contains an internal BsaI recognition site.";
+        warning_element.style.color = "#b00020";
+        warning_element.style.fontWeight = "bold";
+      } else {
+        warning_element.textContent = "No internal BsaI site detected.";
+        warning_element.style.color = "";
+        warning_element.style.fontWeight = "";
+      }
+    }
 
-                        var rows = %(json_table)s;
-                        var spedit_rows = %(spedit_json)s;
-                        function createTable() {
-                            var table = document.getElementById("posTable");
-                            var len = 0;
-                            for (i = 0, len = rows.length; i < len; i++){
-                                var row = table.insertRow(i+1);
+    function update_primer(number) {
+      var index = Number(number);
+      var primer = rows[index][1];
 
-                                var radioHtml = '<input type="radio" name="gRNA" value="' + i.toString() + '" onclick="update_primer(this.value);"';
-                                if ( i == 0 ) {
-                                    radioHtml += ' checked="checked"';
-                                };
-                                radioHtml += '/>';
+      document.getElementById("primer_forward").textContent =
+        "5'-" + primer[1] + "-3'";
+      document.getElementById("primer_reverse").textContent =
+        "5'-" + primer[2] + "-3'";
+      document.getElementById("overlapping_primer_forward").textContent =
+        "5'-" + primer[0] + primer[1].substring(10) + "-3'";
+      document.getElementById("overlapping_primer_reverse").textContent =
+        "5'-" + rev_complement(primer[0]) +
+        primer[2].substring(10) + "-3'";
 
-                                row.insertCell(0).innerHTML = radioHtml;
-                                row.insertCell(1).innerHTML = "5'- " + rows[i][0] + " -3'";
-                                row.insertCell(2).innerHTML = rows[i][2];
-                                row.insertCell(3).innerHTML = rows[i][3];
-                                row.insertCell(4).innerHTML = rows[i][4];
-                                row.insertCell(5).innerHTML = rows[i][5];
-                                row.insertCell(6).innerHTML = rows[i][6];
-                                row.insertCell(7).innerHTML = rows[i][7];
-                                row.insertCell(8).innerHTML = rows[i][8];
-                            }
-                        }
-                        window.onload = function(){
-                            createTable();update_primer(0);}
-                        </script>
-  </div>
+      update_annotation(index);
+      update_spedit(index);
+    }
 
-  <h3 class="toggle_header" onclick="toggle_interface(primers)">PRIMERS</h3>
-  <div id="primers">
-  <h5>sgRNA cloning primers</h5>
-  <div class="l_field">sgRNA:</div><div class="r_field" id="primer_algo"></div><br>
-  <div class="l_field">PAM:</div><div class="r_field" id="pam"></div><br>
-  <div class="l_field">PAM coordinates (1-based, inclusive):</div><div class="r_field" id="primer_pos"></div><br>
-  <div class="l_field">Strand:</div><div class="r_field" id="primer_strand"></div><br>
-  <br><br>
-  <div class="l_field">Traditional cloning sgFw:</div><div class="r_field" id="primer_forward"></div><br>
-  <div class="l_field">Traditional cloning sgRv:</div><div class="r_field" id="primer_reverse"></div>
-  <h5>OR</h5>
-  <div class="l_field">Ligation-free sgFw:</div><div class="r_field" id="overlapping_primer_forward"></div><br>
-  <div class="l_field">Ligation-free sgRv:</div><div class="r_field" id="overlapping_primer_reverse"></div><br>
+    var rows = %(json_table)s;
+    var annotation_rows = %(annotation_json)s;
+    var spedit_rows = %(spedit_json)s;
 
-  <h5>Homologous Recombination template primers</h5>
-  <div class="l_field">HRFw:</div><div class="r_field">5'-%(hrfw)s-3'</div><br>
-  <div class="l_field">HRRv:</div><div class="r_field">5'-%(hrrv)s-3'</div><br>
+    function create_table() {
+      var table = document.getElementById("posTable");
+      for (var index = 0; index < rows.length; index++) {
+        var row = table.insertRow(index + 1);
+        var radio_html =
+          '<input type="radio" name="gRNA" value="' + index.toString() +
+          '" onclick="update_primer(this.value);"';
+        if (index === 0) {
+          radio_html += ' checked="checked"';
+        }
+        radio_html += "/>";
 
-  <h5>Deletion checking primers</h5>
-  <div class="l_field">CkFw:</div><div class="r_field">5'-%(primer_left)s-3'</div><br>
-  <div class="l_field">CkFw Tm:</div><div class="r_field">%(left_tm)s</div><br>
-  <div class="l_field">CkRv:</div><div class="r_field">5'-%(primer_right)s-3'</div><br>
-  <div class="l_field">CkRv Tm:</div><div class="r_field">%(right_tm)s</div><br>
-  <div class="l_field">PCR product size with deletion:</div><div class="r_field">%(deleted_dna_size)s</div><br>
-  <div class="l_field">PCR product size without deletion:</div><div class="r_field">%(negative_result_size)s</div><br>
-  <div class="l_field">Region surrounding deletion junction:</div><div class="r_field">%(deleted_dna)s</div><br>
+        row.insertCell(0).innerHTML = radio_html;
+        row.insertCell(1).textContent = "5'- " + rows[index][0] + " -3'";
+        row.insertCell(2).textContent = rows[index][2];
+        row.insertCell(3).textContent = rows[index][3];
+        row.insertCell(4).textContent = rows[index][4];
+        row.insertCell(5).textContent = rows[index][5];
+        row.insertCell(6).textContent = rows[index][6];
+        row.insertCell(7).textContent = rows[index][7];
+        row.insertCell(8).textContent = rows[index][8];
+      }
+    }
 
-  <h5>SpEDIT/pLSB BsaI Golden Gate oligos</h5>
-  <div class="l_field">Selected sgRNA:</div>
-  <div class="r_field" id="spedit_guide"></div>
-  <br>
-
-  <div class="l_field">SpEDIT forward oligo, 52 nt:</div>
-  <div class="r_field" id="spedit_forward"></div>
-  <br>
-
-  <div class="l_field">SpEDIT reverse oligo, 52 nt:</div>
-  <div class="r_field" id="spedit_reverse"></div>
-  <br>
-
-  <div class="l_field">Internal BsaI site check:</div>
-  <div class="r_field" id="spedit_bsai_warning"></div>
-  <br>
-
-  <div id="spedit_error" style="color: #b00020;"></div>
-  <br>
-  </div>
+    window.onload = function() {
+      create_table();
+      if (rows.length > 0) {
+        update_primer(0);
+      }
+    };
+  </script>
 </div>

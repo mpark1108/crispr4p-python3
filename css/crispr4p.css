@@ -307,6 +307,44 @@ border-width: 1px;
    padding: 5px;
 }
 
+.workflow_section {
+   margin-bottom: 20px;
+}
+
+.annotation_summary,
+.annotation_details {
+   border-left: 4px solid #D1F0A6;
+   margin: 8px 0 12px 0;
+   padding: 8px 12px;
+}
+
+.annotation_details summary {
+   color: #1777B1;
+   cursor: pointer;
+   font-weight: bold;
+   padding: 4px 0;
+}
+
+.annotation_field {
+   margin: 4px 0;
+}
+
+.annotation_transcript {
+   border-top: 1px dotted #CCCCCC;
+   margin-top: 8px;
+   padding: 4px 0 4px 12px;
+}
+
+.annotation_warning {
+   color: #B00020;
+   font-weight: bold;
+}
+
+.annotation_provenance {
+   color: #666666;
+   font-size: 90%;
+}
+
 /* Footer */
 
 #footer {
@@ -341,4 +379,3 @@ border-width: 1px;
 	font-size: 182%;
 	font-weight: normal;
 }
-

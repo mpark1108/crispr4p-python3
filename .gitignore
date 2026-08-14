@@ -10,5 +10,5 @@ venv/
 env/
 
 # runtime cache
-precomputed/*.pickle
-precomputed_stand_alone/*.pickle
+precomputed/
+precomputed_stand_alone/

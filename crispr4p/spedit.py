@@ -5,7 +5,7 @@ _COMPLEMENT = str.maketrans("ACGT", "TGCA")
 _VALID_BASES = frozenset("ACGT")
 
 
-def _normalize_guide(guide: str) -> str:
+def normalize_guide(guide: str) -> str:
     """Normalize and validate a 20-nt DNA guide sequence."""
     if not isinstance(guide, str):
         raise TypeError("Guide sequence must be a string.")
@@ -29,12 +29,9 @@ def reverse_complement(sequence: str) -> str:
     return sequence.translate(_COMPLEMENT)[::-1]
 
 
-def make_spedit_oligos(guide: str) -> tuple[str, str]:
-    """
-    Generate the 52-nt forward and reverse SpEDIT/pLSB
-    BsaI Golden Gate oligonucleotides.
-    """
-    guide = _normalize_guide(guide)
+def make_oligos(guide: str) -> tuple[str, str]:
+    """Build the forward and reverse 52-nt SpEDIT oligos."""
+    guide = normalize_guide(guide)
 
     forward = SPEDIT_FORWARD_PREFIX + guide + SPEDIT_FORWARD_SUFFIX
     reverse = reverse_complement(forward)
@@ -45,7 +42,7 @@ def make_spedit_oligos(guide: str) -> tuple[str, str]:
     return forward, reverse
 
 
-def has_internal_bsai_site(guide: str) -> bool:
+def has_bsai(guide: str) -> bool:
     """Return True if the 20-nt guide contains a BsaI recognition site."""
-    guide = _normalize_guide(guide)
+    guide = normalize_guide(guide)
     return "GGTCTC" in guide or "GAGACC" in guide

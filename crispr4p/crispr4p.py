@@ -1,15 +1,66 @@
 #!/usr/bin/env python3
 
 import argparse
-import re
 import os
 import sys
 import time
-import pickle
 import multiprocessing
 import queue
 
-from primer3 import bindings as primer3
+if __package__:
+    from .cache import (
+        cache_path,
+        cache_exists,
+        ensure_cache_dir,
+        get_cached,
+    )
+    from .design import TableSorting, run_design
+    from .coordinates import hit_coordinates
+    from .genome import GenomePamIndex
+    from .guides import (
+        find_guides,
+        guide_primers,
+        is_match,
+        match_guide,
+    )
+    from .resources import (
+        AnnotationParser,
+        ReferenceResources,
+        chromosomeFasta,
+        read_fasta,
+    )
+    from .primers import (
+        build_hr_dna,
+        checking_primers,
+        design_primers as _design_primers,
+    )
+else:  # Support direct script execution.
+    from cache import (
+        cache_path,
+        cache_exists,
+        ensure_cache_dir,
+        get_cached,
+    )
+    from design import TableSorting, run_design
+    from coordinates import hit_coordinates
+    from genome import GenomePamIndex
+    from guides import (
+        find_guides,
+        guide_primers,
+        is_match,
+        match_guide,
+    )
+    from resources import (
+        AnnotationParser,
+        ReferenceResources,
+        chromosomeFasta,
+        read_fasta,
+    )
+    from primers import (
+        build_hr_dna,
+        checking_primers,
+        design_primers as _design_primers,
+    )
 
 datapath = os.path.join(os.path.dirname(__file__), "../data/")
 
@@ -37,96 +88,11 @@ def timeit(method):
     return timed
 
 
-class TableSorting:
-    def __init__(self, posList, reversed_sort):
-        self.reversed = reversed_sort
-        self.posList = posList
-
-    def bubbleSort(self, alist):
-        for passnum in range(len(alist)-1,0,-1):
-            for i in range(passnum):
-                if self._biggerThanTuple(alist[i], alist[i+1]):
-                    temp = alist[i]
-                    alist[i] = alist[i+1]
-                    alist[i+1] = temp
-
-    def _biggerThanTuple(self, tup1, tup2):
-        '''
-        Compares two tuples with the attributes set up in the init.
-        :param tup1:
-        :param tup2:
-        :return:
-        '''
-        iterRange = list(range(self.posList[0], self.posList[1]+1))
-        iterRange = list(reversed(iterRange)) if self.reversed else iterRange
-
-        for i in iterRange:
-            if tup1[i] > tup2[i]:
-                return True
-            elif tup1[i] < tup2[i]:
-                return False
-
-
-    def sortByPosCriteria(self, table):
-        self.bubbleSort(table)
-        return table
-
-
 class CPU_RAM:
     def getNumProccess(self):
         #return the number of process to run
         return 1
         # return multiprocessing.cpu_count()*3/4
-
-
-class chromosomeFasta():
-    '''
-    Reads FASTA chromosome and parses it.
-    '''
-    def __init__(self, data):
-        data = data.split('\n')
-        self.header = data[0]
-        self.sequence = ''.join(data[1:])
-        self.name = self.header[:self.header.index(' ')]
-
-    def __str__(self):
-        return ' '.join(['chromosome:', self.name, 'Length:', str(len(self.sequence)), 'Header:', self.header])
-
-
-class AnnotationParser:
-    def __init__(self, coordinates_txt, synonims_txt):
-        self.coordinates_ = self.readCoordinates_(coordinates_txt)
-        self.synonims_ = self.readSynonims_(synonims_txt)
-
-    def readCoordinates_(self, coordinates_txt):
-        with open(coordinates_txt, 'r', encoding='utf-8') as f:
-            data = [x.rstrip() for x in f.readlines()][1:]
-        return [x.split('\t') for x in data]
-
-    def readSynonims_(self, synonims_txt):
-        with open(synonims_txt, 'r', encoding='utf-8') as f:
-            data = [x.rstrip() for x in f.readlines()][2:]
-        data = [x.split('\t') for x in data]
-        return [[y for y in x if y] for x in data]
-
-    def normalize_name(self, name):
-        name = name.upper().strip()
-        if not any(x[0] == name for x in self.coordinates_):
-            name = name.lower()
-        return name
-
-    def getCoordsFromName(self, name):
-        input_name = name
-        name = self.normalize_name(name)
-
-        # find SPAC uniform name
-        try:
-            found = next(x for x in self.synonims_ if name in x)[0]
-        except StopIteration:
-            raise Exception('"%s" name not found, check the name is correct' % input_name)
-
-        coordinates = next(x for x in self.coordinates_ if x[0] == found)[1:]
-        return coordinates
 
 
 class NGG(object):
@@ -147,15 +113,38 @@ class PrimerDesign:
 
     complements = {'A': 'T', 'T': 'A', 'C': 'G', 'G': 'C', 'N': 'N'}
 
-    def __init__(self, sequenceFile, coordinates, synomins, verbose=False, precomputed_folder=PRECOMPUTED, regression=False):
-        self.argumentParser()
+    def __init__(
+        self,
+        sequenceFile,
+        coordinates,
+        synomins,
+        verbose=False,
+        precomputed_folder=PRECOMPUTED,
+        regression=False,
+        genome_index=None,
+        reference_resources=None,
+    ):
         self.sequenceFile_ = sequenceFile
-        self.chromosomesData = self.readsequence(self.sequenceFile_)
+        self.reference_resources = (
+            reference_resources
+            if reference_resources is not None
+            else ReferenceResources.from_files(
+                sequenceFile,
+                coordinates,
+                synomins,
+            )
+        )
+        self.chromosomesData = self.reference_resources.chromosomes
         self._numAlternativeCheckings = 2
-        self.annotationParser_ = AnnotationParser(coordinates, synomins)
+        self.annotationParser_ = self.reference_resources.annotations
         self.userNGGs = []
         self.tableNGGs = {}
-        self.NGGs = None
+        self.genome_index = genome_index
+        self.NGGs = (
+            genome_index.by_suffix
+            if genome_index is not None
+            else None
+        )
         self.verbose = verbose
         self.precomputed_folder = precomputed_folder
         self.regression = regression
@@ -175,6 +164,8 @@ class PrimerDesign:
         self.argp_.add_argument('--oligo', action='store', type=str, help='Oligo/sgRNA sequence (20bp seed or 23bp seed+PAM) to analyze.')
 
     def parseArgs(self, localArgs):
+        if not hasattr(self, 'argp_'):
+            self.argumentParser()
         self.argsList_ = self.argp_.parse_args(localArgs)
 
         if self.argsList_.oligo:
@@ -209,65 +200,48 @@ class PrimerDesign:
         return True
 
     def _getUserNGGs(self, crFasta, start, end):
-        ##user input NGGs
-        findNGGs = {}
-        for strand, data in {1:crFasta.sequence[start:end+1], -1:self.reverseComplement(crFasta.sequence[start:end+1])}.items():
-            # Use a zero-width lookahead so both GG starts in GGG are tested.
-            # A consuming ``GG`` regex skips the second, overlapping SpCas9
-            # PAM and therefore misses a valid guide.
-            for match in re.finditer(r'(?=GG)', data):
-                pos = match.start()
-                pam = data[pos-1:pos+2]
-                seed = data[pos-SEED_LENGTH-1:pos-1]
-                if seed:
-                    auxfindNGGs = findNGGs.get(seed, [])
-                    auxfindNGGs.append(NGG(crFasta.name, pos, strand, seed, pam))
-                    findNGGs[seed] = auxfindNGGs
-
-        #filter unique values
-        self.userNGGs = [value[0] for value in findNGGs.values() if len(value) == 1]
-
-        assert len(findNGGs) != 0, 'No nGG found in your input'
+        # Do not leave guides from an earlier query if discovery fails.
+        self.userNGGs = []
+        self.userNGGs = find_guides(
+            crFasta.sequence,
+            crFasta.name,
+            start,
+            end,
+            hit_factory=NGG,
+            reverse_complement=self.reverseComplement,
+            seed_length=SEED_LENGTH,
+        )
 
     def getPrimerGRNA(self, crFasta, start, end, ngg):
-        #get primers
-        ind = ngg.pos
-        if ngg.strand == 1:
-            startInd = start+1+ind
-            gRNA = crFasta.sequence[startInd-22:startInd-2]
-            pam = crFasta.sequence[startInd-2:startInd+1]
-            pam_start = startInd - 2
-        else:   #strand -1
-            startInd = end-1-ind
-            pam = self.reverseComplement(crFasta.sequence[startInd:startInd+3])
-            gRNA = self.reverseComplement(crFasta.sequence[startInd+3:startInd+23])
-            pam_start = startInd
-        gRNAfw = gRNA[-10:] + 'gttttagagctagaaatagcaagttaaaataa'
-        gRNArv = self.reverseComplement(gRNA[:10]) + 'ttcttcggtacaggttatgttttttggcaaca'
-
-        # Sequence slices above are 0-based and end-exclusive. Report the PAM
-        # to users as a conventional 1-based, inclusive three-base interval.
-        pam_coordinates = (pam_start + 1, pam_start + 3)
-        return gRNA, gRNAfw, gRNArv, pam_coordinates, ngg.strand, pam
+        return guide_primers(
+            crFasta.sequence,
+            start,
+            end,
+            ngg,
+            self.reverseComplement,
+        )
 
     def _genPrecomputedName(self, name, nMismatch, cr, start, end):
-        if not os.path.isdir(self.precomputed_folder):
-            os.makedirs(self.precomputed_folder)
+        ensure_cache_dir(self.precomputed_folder)
+        systematic_name = None
         if name:
             #use systematic name (SPAC)
-            sistematic_name = [x for x in self.annotationParser_.synonims_ if name in x][0][0]
-            basename = '%s_v%s_n%s.pickle' % (
-                sistematic_name, PRECOMPUTED_VERSION, nMismatch
-            )
-        else:
-            basename = '%s_%s_%s_v%s_n%s.pickle' % (
-                cr, start, end, PRECOMPUTED_VERSION, nMismatch
-            )
-        return os.path.join(self.precomputed_folder, basename)
+            systematic_name = [
+                x for x in self.annotationParser_.synonims_ if name in x
+            ][0][0]
+        return cache_path(
+            self.precomputed_folder,
+            PRECOMPUTED_VERSION,
+            nMismatch,
+            cr,
+            start,
+            end,
+            systematic_name=systematic_name,
+        )
 
     @staticmethod
     def _isPrecomputed(precomputedName):
-        if os.path.isfile(precomputedName):
+        if cache_exists(precomputedName):
             return True
 
     def run_(self, chromosome, start, end, nMismatch, name):
@@ -276,53 +250,40 @@ class PrimerDesign:
             :param coords: tuple(int, int, int)
             :return: tuple(1,2,3)
         '''
-        if not self.regression:
-            self.getNGGsFromGenome()
-        crFasta = self.chromosomesData.get(chromosome, None)
-
-        #find user input nggs
-        self._getUserNGGs(crFasta, start, end)
-
-        #get primers in parallel
-        self.gRNA_Table(nMismatch)
-
-        #Check primer GRNA
-        for key in self.tableNGGs:
-            primerGRNA = self.getPrimerGRNA(crFasta, start, end, key)
-            key.primer = primerGRNA
-
-        #create table
-        tablepos = []
-        for key, value in self.tableNGGs.items():
-            newrow = [key.seed, key.primer] + [len(value[ind]) for ind in range(8,21,2)]
-            tablepos.append(newrow)
-
-        #sort table
-        tablepos = TableSorting((2, len(tablepos[0])-1), reversed_sort=True).sortByPosCriteria(tablepos)
-        hr_DNA, primerCheck = [x(crFasta, start, end) for x in (self.HR_DNA, self.CheckingPrimers)]
-        return tablepos, hr_DNA, primerCheck, self.tableNGGs
+        return run_design(
+            chromosome,
+            start,
+            end,
+            nMismatch,
+            regression=self.regression,
+            chromosomes=self.chromosomesData,
+            guide_matches=self.tableNGGs,
+            ensure_genome_index=self.getNGGsFromGenome,
+            discover_guides=self._getUserNGGs,
+            match_guides=self.gRNA_Table,
+            build_guide_primer=self.getPrimerGRNA,
+            build_hr_dna=self.HR_DNA,
+            build_checking_primers=self.CheckingPrimers,
+        )
 
     def getNGGsFromGenome(self):
         '''
         Run at initialization.
         :return:
         '''
-        self.NGGs = {}
-        for name, sequence in self.chromosomesData.items():
-            for strand, data in {1:sequence.sequence, -1:self.reverseComplement(sequence.sequence)}.items():
-                for pam_suffix in ('GG', 'AG'):
-                    # PAMs can overlap (for example, the two GG starts in
-                    # GGG), so do not consume the matched dinucleotide.
-                    for match in re.finditer(r'(?=%s)' % pam_suffix, data):
-                        pos = match.start()
-                        pam = data[pos-1:pos+2]
-                        string = data[pos-SEED_LENGTH-1:pos-1]
+        if getattr(self, 'genome_index', None) is None:
+            chromosome_sequences = {
+                name: chromosome.sequence
+                for name, chromosome in self.chromosomesData.items()
+            }
+            self.genome_index = GenomePamIndex.build(
+                chromosome_sequences,
+                hit_factory=NGG,
+                seed_length=SEED_LENGTH,
+            )
 
-                        # index last 8
-                        index_8 = string[-8:]
-                        if index_8 not in self.NGGs:
-                            self.NGGs[index_8] = []
-                        self.NGGs[index_8].append(NGG(name, pos, strand, string, pam))
+        self.NGGs = self.genome_index.by_suffix
+        return self.genome_index
 
     def getOligoHitCoordinates(self, ngg):
         """
@@ -343,36 +304,17 @@ class PrimerDesign:
                 'Chromosome "%s" not found for oligo hit' % ngg.chromosome
             )
 
-        if ngg.strand == 1:
-            # pos is the 0-based first G/A of the matched GG/AG dinucleotide;
-            # the complete NRG PAM begins one base earlier.
-            pam_start = ngg.pos
-            pam_end = ngg.pos + 2
-            cut_left = pam_start - 4
-        elif ngg.strand == -1:
-            # pos is measured in the reverse-complement sequence. Convert the
-            # inclusive three-base PAM back to forward-reference coordinates.
-            chromosome_length = len(chromosome.sequence)
-            pam_start = chromosome_length - ngg.pos - 1
-            pam_end = chromosome_length - ngg.pos + 1
-            cut_left = pam_end + 3
-        else:
-            raise ValueError("Oligo hit strand must be 1 or -1")
-
-        reference_pam = chromosome.sequence[pam_start - 1:pam_end]
-        if ngg.strand == -1:
-            reference_pam = self.reverseComplement(reference_pam)
-        if reference_pam != ngg.pam:
-            raise ValueError("Normalized PAM coordinates do not match the FASTA")
-
-        return (pam_start, pam_end), (cut_left, cut_left + 1)
+        return hit_coordinates(
+            ngg.pos,
+            ngg.strand,
+            ngg.pam,
+            chromosome.sequence,
+            self.reverseComplement,
+        )
 
     @staticmethod
     def genomeCompare(g1, g2, nmismatch):
-        if nmismatch == 0:
-            return g1 == g2
-        oo = len([x for x in range(len(g1)) if g1[x] != g2[x]])
-        return nmismatch >= oo
+        return is_match(g1, g2, nmismatch)
 
     def _gRNA_Table_Worker(self, readDataQueue, storeDataQueue, nMismatch):
         '''
@@ -389,20 +331,7 @@ class PrimerDesign:
             storeDataQueue.put(self._single_table_worker(userNGG, nMismatch))
 
     def _single_table_worker(self, userNGG, nMismatch):
-        index_8 = userNGG.seed[-8:]
-        genomeNGG = self.NGGs.get(index_8, [])[:]
-        tableDict = {8: genomeNGG}
-
-        for it in range(10, 21, 2):
-            auxNMismatch = nMismatch if it > 8 else 0
-            remainingGenomeNGG = []
-            for auxGenomeNGG in genomeNGG:
-                # todo: ignore comparison with itself, start + ngg pos
-                if PrimerDesign.genomeCompare(userNGG.seed[-it:], auxGenomeNGG.seed[-it:], auxNMismatch):
-                    remainingGenomeNGG.append(auxGenomeNGG)
-            genomeNGG = list(set(remainingGenomeNGG))
-            tableDict[it] = genomeNGG
-        return userNGG, tableDict
+        return match_guide(userNGG, self.NGGs, nMismatch)
 
     def gRNA_Table(self, nMismatch):
         '''
@@ -459,12 +388,12 @@ class PrimerDesign:
             :param end: int
             :return: Tuple
         '''
-        prev250 = crFasta.sequence[start-250:start]
-        next250 = crFasta.sequence[end:end+250]
-        HRfw = prev250[-80:] + next250[:20]
-        HRrv = ''.join(reversed(next250[:80])) + ''.join(reversed(prev250[-20:]))
-        HRrv = self.sequenceComplement_(HRrv)
-        return HRfw, HRrv, prev250+next250
+        return build_hr_dna(
+            crFasta.sequence,
+            start,
+            end,
+            self.sequenceComplement_,
+        )
 
     def CheckingPrimers(self, crFasta, start, end):
         '''
@@ -477,55 +406,14 @@ class PrimerDesign:
         return self.CheckingPrimersWidth_(crFasta, start, end, 300)
 
     def CheckingPrimersWidth_(self, crFasta, start, end, width):
-
-        prev = crFasta.sequence[start-width:start]
-        next = crFasta.sequence[end:end+width]
-        #build dictionaries
-        primerDict =  {
-        'SEQUENCE_ID': 'MH1000',
-        'SEQUENCE_TEMPLATE': prev+next,
-        'SEQUENCE_INCLUDED_REGION': [0,2*width],
-        'SEQUENCE_EXCLUDED_REGION': [[width-80, 160]]
-        }
-        primerDict2 = {
-        'PRIMER_OPT_SIZE': 20,
-        'PRIMER_PICK_INTERNAL_OLIGO': 1,
-        'PRIMER_INTERNAL_MAX_SELF_END': 8,
-        'PRIMER_MIN_SIZE': 18,
-        'PRIMER_MAX_SIZE': 25,
-        'PRIMER_OPT_TM': 60.0,
-        'PRIMER_MIN_TM': 57.0,
-        'PRIMER_MAX_TM': 63.0,
-        'PRIMER_MIN_GC': 20.0,
-        'PRIMER_MAX_GC': 80.0,
-        'PRIMER_MAX_POLY_X': 100,
-        'PRIMER_INTERNAL_MAX_POLY_X': 100,
-        'PRIMER_SALT_MONOVALENT': 50.0,
-        'PRIMER_DNA_CONC': 50.0,
-        'PRIMER_MAX_NS_ACCEPTED': 0,
-        'PRIMER_MAX_SELF_ANY': 12,
-        'PRIMER_MAX_SELF_END': 8,
-        'PRIMER_PAIR_MAX_COMPL_ANY': 12,
-        'PRIMER_PAIR_MAX_COMPL_END': 8,
-        'PRIMER_PRODUCT_SIZE_RANGE': [[width-75, 2*width]],
-        }
-
-        ans = primer3.designPrimers(primerDict, primerDict2)
-
-        return_values = ['PRIMER_LEFT_%s_SEQUENCE', 'PRIMER_LEFT_%s_SEQUENCE', 'PRIMER_RIGHT_%s_SEQUENCE',
-                         'PRIMER_LEFT_%s_TM','PRIMER_RIGHT_%s_TM', 'PRIMER_LEFT_%s_GC_PERCENT',
-                         'PRIMER_RIGHT_%s_GC_PERCENT', 'PRIMER_PAIR_%s_PRODUCT_SIZE', 'PRIMER_LEFT_%s_TM',
-                         'PRIMER_RIGHT_%s_TM']
-
-        primerDesingCheck = []
-        for x in range(self._numAlternativeCheckings):
-            auxDict = {}
-            for elem in return_values:
-                designPrimer_key = elem % x
-                auxDict[designPrimer_key] = ans[designPrimer_key]
-            auxDict['negative_result'] = ans['PRIMER_PAIR_%s_PRODUCT_SIZE' % x] + (end-start)
-            primerDesingCheck.append(auxDict)
-        return primerDesingCheck
+        return checking_primers(
+            crFasta.sequence,
+            start,
+            end,
+            width,
+            self._numAlternativeCheckings,
+            primer_designer=_design_primers,
+        )
 
     @staticmethod
     def sequenceComplement_(sequence):
@@ -551,28 +439,17 @@ class PrimerDesign:
         '''
         self.checkCoords_(chromosome, start, end)
         precomputedName = self._genPrecomputedName(name, nMismatch, chromosome, start, end)
-        if not self._isPrecomputed(precomputedName):
-            tablePos_grna, hr_dna, primercheck, gRNAs_match = self.run_(chromosome, int(start), int(end), nMismatch, name)
-
-            try:
-                data = pickle.dumps((tablePos_grna, hr_dna, primercheck, gRNAs_match), protocol=-1)
-                with open(precomputedName, 'wb') as fh:
-                    fh.write(data)
-            except Exception as e:
-                # if writing fails, don't show error, will compute it next time
-                if os.path.isfile(precomputedName):
-                    os.remove(precomputedName)
-        else:
-            try:
-                with open(precomputedName, 'rb') as fh:
-                    tablePos_grna, hr_dna, primercheck, gRNAs_match = pickle.load(fh)
-            except Exception as e:
-                # pickle loading failed delete file, next call will store it right.
-                if os.path.isfile(precomputedName):
-                    os.remove(precomputedName)
-                tablePos_grna, hr_dna, primercheck, gRNAs_match = self.run_(chromosome, int(start), int(end), nMismatch, name)
-
-        return tablePos_grna, hr_dna, primercheck, gRNAs_match
+        return get_cached(
+            precomputedName,
+            lambda: self.run_(
+                chromosome,
+                int(start),
+                int(end),
+                nMismatch,
+                name,
+            ),
+            self._isPrecomputed,
+        )
 
     def runOligoQuery(self, oligo_seq, nMismatch):
         # 1. Clean input
@@ -634,6 +511,8 @@ class PrimerDesign:
         Run from Command line
             :param localArgs: list of strings
         '''
+        # Keep the old entry point; normal CLI parsing lives in crispr4p.cli.
+        self.argumentParser()
         self.argsList_ = self.argp_.parse_args(localArgs)
         
         if self.argsList_.oligo:
@@ -712,21 +591,17 @@ class PrimerDesign:
             :param sequenceFile: string
             :return: dict
         '''
-        with open(sequenceFile, 'r', encoding='utf-8') as f:
-            aux = f.read()
-        ansDict = {}
-        for x in aux.split('>'):
-            if x:
-                crFasta = chromosomeFasta(x)
-                ansDict[crFasta.name] = crFasta
-        return ansDict
+        # Direct callers expect a mutable dict.
+        return dict(read_fasta(sequenceFile))
 
 
 if __name__ == "__main__":
+    # Support direct ``python crispr4p/crispr4p.py`` execution.
+    if not __package__:
+        project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        if project_root not in sys.path:
+            sys.path.insert(0, project_root)
 
-    starttime = time.time()
+    from crispr4p.cli import main
 
-    pd = PrimerDesign(FASTA, COORDINATES, SYNONIMS, verbose=True)
-    pd.runCL(sys.argv[1:])
-
-    print('run time', time.time()-starttime)
+    raise SystemExit(main(sys.argv[1:]))

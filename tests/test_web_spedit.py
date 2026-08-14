@@ -1,6 +1,6 @@
 import unittest
 
-from webapp import build_spedit_candidate_data
+from crispr4p.web_views import spedit_rows
 
 
 def make_crispr4p_row(guide: str):
@@ -21,7 +21,7 @@ class TestSpeditCandidateData(unittest.TestCase):
         first = "ACATTGGCTTACGACGGTCG"
         second = "TTGATAGCAACAGTGGCGAC"
 
-        candidates = build_spedit_candidate_data(
+        candidates = spedit_rows(
             [
                 make_crispr4p_row(first),
                 make_crispr4p_row(second),
@@ -34,7 +34,7 @@ class TestSpeditCandidateData(unittest.TestCase):
     def test_generates_oligos_for_selected_candidate(self) -> None:
         guide = "TTGATAGCAACAGTGGCGAC"
 
-        candidates = build_spedit_candidate_data(
+        candidates = spedit_rows(
             [make_crispr4p_row(guide)]
         )
 
@@ -60,7 +60,7 @@ class TestSpeditCandidateData(unittest.TestCase):
         safe = "TTGATAGCAACAGTGGCGAC"
         unsafe = "TTTTGAATGGTCTCAGTTGT"
 
-        candidates = build_spedit_candidate_data(
+        candidates = spedit_rows(
             [
                 make_crispr4p_row(safe),
                 make_crispr4p_row(unsafe),
