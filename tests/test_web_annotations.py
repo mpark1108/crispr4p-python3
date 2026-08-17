@@ -13,6 +13,7 @@ def guide(cut_left):
     return SimpleNamespace(
         chromosome="I",
         seed="ACATTGGCTTACGACGGTCG",
+        gc_percent=55.0,
         pam="TGG",
         pam_coordinates=(cut_left + 4, cut_left + 6),
         cut_coordinates=(cut_left, cut_left + 1),
@@ -53,6 +54,7 @@ class WebAnnotationDataTests(unittest.TestCase):
         candidate = self.candidate(200, target_name="plus_gene")
 
         self.assertEqual("I", candidate["chromosome"])
+        self.assertEqual(55.0, candidate["gc_percent"])
         self.assertEqual([204, 206], candidate["pam_coordinates"])
         self.assertEqual([200, 201], candidate["cut_coordinates"])
         self.assertEqual("+", candidate["strand"])

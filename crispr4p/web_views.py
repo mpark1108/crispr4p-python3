@@ -216,6 +216,7 @@ def annotation_rows(guides, annotations, target_name=None):
             {
                 "chromosome": guide.chromosome,
                 "seed": guide.seed,
+                "gc_percent": round(guide.gc_percent, 1),
                 "pam": guide.pam,
                 "pam_coordinates": list(guide.pam_coordinates),
                 "cut_coordinates": list(guide.cut_coordinates),

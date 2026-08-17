@@ -21,6 +21,7 @@
   <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('selected_guide_and_cut'))">Selected sgRNA and Cut Site</h3>
   <div id="selected_guide_and_cut" class="workflow_section">
     <div class="l_field">sgRNA:</div><div class="r_field" id="selected_guide"></div><br>
+    <div class="l_field">sgRNA GC content:</div><div class="r_field" id="selected_guide_gc"></div><br>
     <div class="l_field">PAM:</div><div class="r_field" id="selected_pam"></div><br>
     <div class="l_field">PAM coordinates (1-based, inclusive):</div><div class="r_field" id="selected_pam_coordinates"></div><br>
     <div class="l_field">Guide strand:</div><div class="r_field" id="selected_guide_strand"></div><br>
@@ -226,6 +227,7 @@
 
       if (!candidate) {
         document.getElementById("selected_guide").textContent = "";
+        document.getElementById("selected_guide_gc").textContent = "";
         document.getElementById("selected_pam").textContent = "";
         document.getElementById("selected_pam_coordinates").textContent = "";
         document.getElementById("selected_guide_strand").textContent = "";
@@ -236,6 +238,8 @@
 
       document.getElementById("selected_guide").textContent =
         "5'-" + candidate.seed + "-3'";
+      document.getElementById("selected_guide_gc").textContent =
+        candidate.gc_percent.toFixed(1) + "%%";
       document.getElementById("selected_pam").textContent = candidate.pam;
       document.getElementById("selected_pam_coordinates").textContent =
         candidate.chromosome + ":" + candidate.pam_coordinates[0] + "-" +

@@ -755,6 +755,8 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertNotIn("sequence", arms[0])
         self.assertEqual("+", guide_rows[0]["coding_strand"])
         self.assertIn("Stop-Cassette Disruption Design", page)
+        self.assertIn('id="selected_guide_gc"', page)
+        self.assertIn("candidate.gc_percent.toFixed(1)", page)
         self.assertIn('id="stop_cassette_menu"', page)
         self.assertIn("Reading frame 1:", page)
         self.assertIn("Reading frame 3:", page)

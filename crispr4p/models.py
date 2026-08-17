@@ -72,6 +72,13 @@ class GuideCandidate:
         """Return the original guide row."""
         return self._legacy_row
 
+    @property
+    def gc_percent(self):
+        """Return GC content of the 20-nt guide."""
+        sequence = self.seed.upper()
+        gc_count = sequence.count("G") + sequence.count("C")
+        return 100 * gc_count / len(sequence)
+
 
 @dataclass(frozen=True)
 class DesignResult:

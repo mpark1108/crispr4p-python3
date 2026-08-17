@@ -86,6 +86,7 @@ class TestDesignResult(unittest.TestCase):
         self.assertEqual((1316791, 1316792), guide.cut_coordinates)
         self.assertEqual(1, guide.strand)
         self.assertEqual("TGG", guide.pam)
+        self.assertEqual(55.0, guide.gc_percent)
         self.assertEqual(
             {8: 5, 10: 1, 12: 1, 14: 1, 16: 1, 18: 1, 20: 1},
             dict(guide.match_counts),
