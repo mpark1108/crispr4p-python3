@@ -105,12 +105,29 @@
 
     <h5>Insertion-checking primers</h5>
     <div id="insertion_primer_status"></div>
+    <h6>Edit-spanning PCR</h6>
     <div class="l_field">CkFw:</div><div class="r_field" id="insertion_primer_forward"></div><br>
     <div class="l_field">CkFw Tm:</div><div class="r_field" id="insertion_primer_forward_tm"></div><br>
     <div class="l_field">CkRv:</div><div class="r_field" id="insertion_primer_reverse"></div><br>
     <div class="l_field">CkRv Tm:</div><div class="r_field" id="insertion_primer_reverse_tm"></div><br>
     <div class="l_field">Expected WT product:</div><div class="r_field" id="insertion_primer_wt_size"></div><br>
     <div class="l_field">Expected disrupted product:</div><div class="r_field" id="insertion_primer_disrupted_size"></div><br>
+
+    <h6>Left-junction PCR</h6>
+    <div class="l_field">CkFw:</div><div class="r_field" id="left_junction_forward"></div><br>
+    <div class="l_field">CkFw Tm:</div><div class="r_field" id="left_junction_forward_tm"></div><br>
+    <div class="l_field">Cassette Rv:</div><div class="r_field" id="left_junction_reverse"></div><br>
+    <div class="l_field">Cassette Rv Tm:</div><div class="r_field" id="left_junction_reverse_tm"></div><br>
+    <div class="l_field">Expected WT product:</div><div class="r_field" id="left_junction_wt_size"></div><br>
+    <div class="l_field">Expected disrupted product:</div><div class="r_field" id="left_junction_product_size"></div><br>
+
+    <h6>Right-junction PCR</h6>
+    <div class="l_field">Cassette Fw:</div><div class="r_field" id="right_junction_forward"></div><br>
+    <div class="l_field">Cassette Fw Tm:</div><div class="r_field" id="right_junction_forward_tm"></div><br>
+    <div class="l_field">CkRv:</div><div class="r_field" id="right_junction_reverse"></div><br>
+    <div class="l_field">CkRv Tm:</div><div class="r_field" id="right_junction_reverse_tm"></div><br>
+    <div class="l_field">Expected WT product:</div><div class="r_field" id="right_junction_wt_size"></div><br>
+    <div class="l_field">Expected disrupted product:</div><div class="r_field" id="right_junction_product_size"></div><br>
     </div>
   </div>
 
@@ -530,6 +547,7 @@
         menu.options.length = 0;
         update_donor(guide_number, null);
         update_restoration(guide_number, null);
+        clear_insertion_primers();
         return;
       }
       var strand = annotation ? annotation.coding_strand : null;
@@ -547,6 +565,7 @@
         document.getElementById("stop_frame_2").textContent = "";
         update_donor(guide_number, null);
         update_restoration(guide_number, null);
+        clear_insertion_primers();
         return;
       }
 
@@ -564,6 +583,7 @@
       document.getElementById("stop_frame_2").textContent = cassette.frames[2];
       update_donor(guide_number, cassette);
       update_restoration(guide_number, cassette);
+      update_insertion_primers(guide_number, cassette);
     }
 
     function show_insertion_primers(pair) {
@@ -580,6 +600,35 @@
         pair.wt_product_size + " bp";
       document.getElementById("insertion_primer_disrupted_size").textContent =
         pair.disrupted_product_size + " bp";
+
+      var left = pair.left_junction;
+      document.getElementById("left_junction_forward").textContent =
+        "5'-" + left.forward + "-3'";
+      document.getElementById("left_junction_forward_tm").textContent =
+        Math.round(left.forward_tm) + " °C";
+      document.getElementById("left_junction_reverse").textContent =
+        "5'-" + left.reverse + "-3'";
+      document.getElementById("left_junction_reverse_tm").textContent =
+        Math.round(left.reverse_tm) + " °C";
+      document.getElementById("left_junction_wt_size").textContent =
+        "No product";
+      document.getElementById("left_junction_product_size").textContent =
+        left.product_size + " bp";
+
+      var right = pair.right_junction;
+      document.getElementById("right_junction_forward").textContent =
+        "5'-" + right.forward + "-3'";
+      document.getElementById("right_junction_forward_tm").textContent =
+        Math.round(right.forward_tm) + " °C";
+      document.getElementById("right_junction_reverse").textContent =
+        "5'-" + right.reverse + "-3'";
+      document.getElementById("right_junction_reverse_tm").textContent =
+        Math.round(right.reverse_tm) + " °C";
+      document.getElementById("right_junction_wt_size").textContent =
+        "No product";
+      document.getElementById("right_junction_product_size").textContent =
+        right.product_size + " bp";
+
       document.getElementById("restoration_primer_forward").textContent =
         "5'-" + pair.forward + "-3'";
       document.getElementById("restoration_primer_forward_tm").textContent =
@@ -595,20 +644,23 @@
     function clear_insertion_primers(message) {
       document.getElementById("insertion_primer_status").textContent =
         message || "";
-      document.getElementById("insertion_primer_forward").textContent = "";
-      document.getElementById("insertion_primer_forward_tm").textContent = "";
-      document.getElementById("insertion_primer_reverse").textContent = "";
-      document.getElementById("insertion_primer_reverse_tm").textContent = "";
-      document.getElementById("insertion_primer_wt_size").textContent = "";
-      document.getElementById("insertion_primer_disrupted_size").textContent =
-        "";
-      document.getElementById("restoration_primer_forward").textContent = "";
-      document.getElementById("restoration_primer_forward_tm").textContent =
-        "";
-      document.getElementById("restoration_primer_reverse").textContent = "";
-      document.getElementById("restoration_primer_reverse_tm").textContent =
-        "";
-      document.getElementById("restoration_product_size").textContent = "";
+      var fields = [
+        "insertion_primer_forward", "insertion_primer_forward_tm",
+        "insertion_primer_reverse", "insertion_primer_reverse_tm",
+        "insertion_primer_wt_size", "insertion_primer_disrupted_size",
+        "left_junction_forward", "left_junction_forward_tm",
+        "left_junction_reverse", "left_junction_reverse_tm",
+        "left_junction_wt_size", "left_junction_product_size",
+        "right_junction_forward", "right_junction_forward_tm",
+        "right_junction_reverse", "right_junction_reverse_tm",
+        "right_junction_wt_size", "right_junction_product_size",
+        "restoration_primer_forward", "restoration_primer_forward_tm",
+        "restoration_primer_reverse", "restoration_primer_reverse_tm",
+        "restoration_product_size"
+      ];
+      for (var index = 0; index < fields.length; index++) {
+        document.getElementById(fields[index]).textContent = "";
+      }
     }
 
     function selected_guide_number() {
@@ -616,28 +668,31 @@
       return selected ? Number(selected.value) : null;
     }
 
-    function update_insertion_primers(guide_number) {
+    function update_insertion_primers(guide_number, cassette) {
       var index = Number(guide_number);
       var annotation = annotation_rows[index];
-      if (!annotation || !donor_arms[index]) {
+      if (!annotation || !donor_arms[index] || !cassette) {
         clear_insertion_primers();
         return;
       }
-      if (insertion_primer_cache[index]) {
-        show_insertion_primers(insertion_primer_cache[index]);
+      var key = index + ":" + cassette.id;
+      if (insertion_primer_cache[key]) {
+        show_insertion_primers(insertion_primer_cache[key]);
         return;
       }
-      if (insertion_primer_requests[index]) {
+      if (insertion_primer_requests[key]) {
         clear_insertion_primers();
         return;
       }
 
       clear_insertion_primers();
-      insertion_primer_requests[index] = true;
+      insertion_primer_requests[key] = true;
       var params = new URLSearchParams({
         chromosome: annotation.chromosome,
         cut_left: annotation.cut_coordinates[0],
-        cut_right: annotation.cut_coordinates[1]
+        cut_right: annotation.cut_coordinates[1],
+        cassette_id: cassette.id,
+        coding_strand: annotation.coding_strand
       });
       fetch("/insertion-primers?" + params.toString(), {cache: "no-store"})
         .then(function(response) {
@@ -649,15 +704,21 @@
           });
         })
         .then(function(pair) {
-          insertion_primer_cache[index] = pair;
-          delete insertion_primer_requests[index];
-          if (selected_guide_number() === index) {
+          insertion_primer_cache[key] = pair;
+          delete insertion_primer_requests[key];
+          var selected_cassette =
+            document.getElementById("stop_cassette_menu").value;
+          if (selected_guide_number() === index &&
+              selected_cassette === cassette.id.toString()) {
             show_insertion_primers(pair);
           }
         })
         .catch(function(error) {
-          delete insertion_primer_requests[index];
-          if (selected_guide_number() === index) {
+          delete insertion_primer_requests[key];
+          var selected_cassette =
+            document.getElementById("stop_cassette_menu").value;
+          if (selected_guide_number() === index &&
+              selected_cassette === cassette.id.toString()) {
             clear_insertion_primers(error.message);
           }
         });
@@ -680,7 +741,6 @@
       update_annotation(index);
       update_spedit(index);
       update_cassette(index);
-      update_insertion_primers(index);
     }
 
     var rows = %(json_table)s;

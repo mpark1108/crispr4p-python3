@@ -4,43 +4,43 @@
   "candidates": [
     {
       "id": 1,
-      "sequence": "TGATGACCTAGTGACCTAGTAGG"
+      "sequence": "TGATGACGTGATGACCTAGTAGG"
     },
     {
       "id": 2,
-      "sequence": "TGATGACGTAGTGACCTAGTAGG"
+      "sequence": "TGATGAGCTGATGACCTAGTAGG"
     },
     {
       "id": 3,
-      "sequence": "TGATGAGCTAGTGACCTAGTAGG"
+      "sequence": "TGATGACCTGATGACCTAGTAGG"
     },
     {
       "id": 4,
-      "sequence": "TGATGAGGTAGTGACCTAGTAGG"
+      "sequence": "TGATGACTGATAGCTGATAGTGG"
     },
     {
       "id": 5,
-      "sequence": "TAATGACCTAGTGACCTAGTAGG"
+      "sequence": "TGATGACTGATAGCTGATAGGGG"
     },
     {
       "id": 6,
-      "sequence": "TAATGACGTAGTGACCTAGTAGG"
+      "sequence": "TGATGAGTAGTAGCTGATAGGGG"
     },
     {
       "id": 7,
-      "sequence": "TAATGAGCTAGTGACCTAGTAGG"
+      "sequence": "TGATGACTAGTAGCTGATAGGGG"
     },
     {
       "id": 8,
-      "sequence": "TAATGAGGTAGTGACCTAGTAGG"
+      "sequence": "TGATGATTGATAGCTGATAGGGG"
     },
     {
       "id": 9,
-      "sequence": "TGATGAAGTAGTGACCTAGTAGG"
+      "sequence": "GTGATGACTGATGACTAGTGAGG"
     },
     {
       "id": 10,
-      "sequence": "TGATGACTTAGTGACCTAGTAGG"
+      "sequence": "GTGATGAGTGATGACTAGTGAGG"
     }
   ]
 }

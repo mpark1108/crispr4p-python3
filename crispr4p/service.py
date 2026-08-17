@@ -16,6 +16,7 @@ from .guides import match_guide
 from .models import DesignResult, OligoAnalysisResult, OligoMatch
 from .primers import (
     PrimerNotFoundError,
+    insertion_checks as design_insertion_checks,
     insertion_primers as design_insertion_primers,
 )
 from .resources import GeneNameNotFoundError
@@ -352,6 +353,40 @@ class Crispr4pService:
             arm_length=arm_length,
             window=window,
             insert_length=insert_length,
+        )
+
+    def insertion_checks(
+        self,
+        chromosome,
+        cut_coordinates,
+        cassette_id,
+        coding_strand,
+        arm_length=80,
+        window=300,
+    ):
+        """Design edit-spanning and junction-checking primer pairs."""
+        resources = self._load_resources()
+        chromosome = str(chromosome).strip()
+        try:
+            reference = resources.chromosomes[chromosome].sequence
+        except KeyError:
+            raise ValueError(f"unknown chromosome: {chromosome}") from None
+
+        cassette = next(
+            (item for item in self.cassettes if item.id == cassette_id),
+            None,
+        )
+        if cassette is None:
+            raise ValueError(f"unknown cassette: {cassette_id}")
+        if coding_strand not in ("+", "-"):
+            raise ValueError("coding strand must be + or -")
+
+        return design_insertion_checks(
+            reference,
+            cut_coordinates,
+            cassette.orient(coding_strand),
+            arm_length=arm_length,
+            window=window,
         )
 
     def restoration_donors(

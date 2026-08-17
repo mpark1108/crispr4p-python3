@@ -116,13 +116,33 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
                 int(query["cut_left"][0]),
                 int(query["cut_right"][0]),
             )
-            pair = create_service().insertion_primers(
-                chromosome,
-                cut,
-                arm_length=DONOR_ARM_LENGTH,
-                insert_length=CASSETTE_LENGTH,
-                window=PRIMER_WINDOW,
-            )
+            cassette_id = query.get("cassette_id", [None])[0]
+            coding_strand = query.get("coding_strand", [None])[0]
+            if (cassette_id is None) != (coding_strand is None):
+                raise ValueError(
+                    "cassette_id and coding_strand must be provided together"
+                )
+
+            service = create_service()
+            checks = None
+            if cassette_id is None:
+                pair = service.insertion_primers(
+                    chromosome,
+                    cut,
+                    arm_length=DONOR_ARM_LENGTH,
+                    insert_length=CASSETTE_LENGTH,
+                    window=PRIMER_WINDOW,
+                )
+            else:
+                checks = service.insertion_checks(
+                    chromosome,
+                    cut,
+                    int(cassette_id),
+                    coding_strand,
+                    arm_length=DONOR_ARM_LENGTH,
+                    window=PRIMER_WINDOW,
+                )
+                pair = checks.spanning
         except PrimerNotFoundError:
             self.serve_json(
                 {"error": "No insertion-checking primer pair was found."},
@@ -133,16 +153,30 @@ class CRISPR4PHandler(BaseHTTPRequestHandler):
             self.serve_json({"error": str(error)}, status=400)
             return
 
-        self.serve_json(
-            {
-                "forward": pair.forward,
-                "reverse": pair.reverse,
-                "forward_tm": pair.forward_tm,
-                "reverse_tm": pair.reverse_tm,
-                "wt_product_size": pair.wt_product_size,
-                "disrupted_product_size": pair.disrupted_product_size,
+        payload = {
+            "forward": pair.forward,
+            "reverse": pair.reverse,
+            "forward_tm": pair.forward_tm,
+            "reverse_tm": pair.reverse_tm,
+            "wt_product_size": pair.wt_product_size,
+            "disrupted_product_size": pair.disrupted_product_size,
+        }
+        if checks is not None:
+            payload["left_junction"] = {
+                "forward": checks.left.forward,
+                "reverse": checks.left.reverse,
+                "forward_tm": checks.left.forward_tm,
+                "reverse_tm": checks.left.reverse_tm,
+                "product_size": checks.left.product_size,
             }
-        )
+            payload["right_junction"] = {
+                "forward": checks.right.forward,
+                "reverse": checks.right.reverse,
+                "forward_tm": checks.right.forward_tm,
+                "reverse_tm": checks.right.reverse_tm,
+                "product_size": checks.right.product_size,
+            }
+        self.serve_json(payload)
 
     def process_post(self):
         content_length = int(self.headers.get('Content-Length', 0))

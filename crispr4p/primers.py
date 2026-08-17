@@ -4,6 +4,11 @@ from dataclasses import dataclass
 
 from primer3 import bindings as primer3
 
+if __package__:
+    from .spedit import reverse_complement
+else:
+    from spedit import reverse_complement
+
 
 def design_primers(sequence_args, global_args):
     """Call primer3-py, including its older API spelling."""
@@ -70,10 +75,64 @@ class InsertionPrimerPair:
     reverse_tm: float
     wt_product_size: int
     insert_length: int
+    forward_start: int | None = None
+    reverse_end: int | None = None
 
     @property
     def disrupted_product_size(self):
         return self.wt_product_size + self.insert_length
+
+
+@dataclass(frozen=True, slots=True)
+class JunctionPrimerPair:
+    forward: str
+    reverse: str
+    forward_tm: float
+    reverse_tm: float
+    product_size: int
+
+
+@dataclass(frozen=True, slots=True)
+class InsertionChecks:
+    spanning: InsertionPrimerPair
+    left: JunctionPrimerPair
+    right: JunctionPrimerPair
+
+
+def _check_pair(template, forward, reverse, product_size, primer_designer):
+    sequence_args = {
+        "SEQUENCE_ID": "junction_check",
+        "SEQUENCE_TEMPLATE": template,
+        "SEQUENCE_PRIMER": forward,
+        "SEQUENCE_PRIMER_REVCOMP": reverse,
+    }
+    settings = _primer_settings((product_size, product_size))
+    settings["PRIMER_TASK"] = "check_primers"
+    settings["PRIMER_PICK_INTERNAL_OLIGO"] = 0
+    settings["PRIMER_NUM_RETURN"] = 1
+
+    answer = primer_designer(sequence_args, settings)
+    if answer.get("PRIMER_PAIR_NUM_RETURNED", 0) < 1:
+        raise PrimerNotFoundError("Primer3 could not check a junction pair")
+
+    problem_keys = (
+        "PRIMER_LEFT_0_PROBLEMS",
+        "PRIMER_RIGHT_0_PROBLEMS",
+        "PRIMER_PAIR_0_PROBLEMS",
+    )
+    problems = [str(answer[key]) for key in problem_keys if answer.get(key)]
+    if problems:
+        raise PrimerNotFoundError(
+            "Primer3 rejected a junction primer: " + "; ".join(problems)
+        )
+
+    return JunctionPrimerPair(
+        forward=answer["PRIMER_LEFT_0_SEQUENCE"],
+        reverse=answer["PRIMER_RIGHT_0_SEQUENCE"],
+        forward_tm=answer["PRIMER_LEFT_0_TM"],
+        reverse_tm=answer["PRIMER_RIGHT_0_TM"],
+        product_size=answer["PRIMER_PAIR_0_PRODUCT_SIZE"],
+    )
 
 
 def insertion_primers(
@@ -130,6 +189,8 @@ def insertion_primers(
     if answer.get("PRIMER_PAIR_NUM_RETURNED", 0) < 1:
         raise PrimerNotFoundError("Primer3 could not find a checking pair")
 
+    left_position = answer.get("PRIMER_LEFT_0")
+    right_position = answer.get("PRIMER_RIGHT_0")
     return InsertionPrimerPair(
         forward=answer["PRIMER_LEFT_0_SEQUENCE"],
         reverse=answer["PRIMER_RIGHT_0_SEQUENCE"],
@@ -137,7 +198,59 @@ def insertion_primers(
         reverse_tm=answer["PRIMER_RIGHT_0_TM"],
         wt_product_size=answer["PRIMER_PAIR_0_PRODUCT_SIZE"],
         insert_length=insert_length,
+        forward_start=left_position[0] if left_position else None,
+        reverse_end=right_position[0] if right_position else None,
     )
+
+
+def insertion_checks(
+    reference,
+    cut,
+    insert,
+    arm_length=80,
+    window=300,
+    primer_designer=design_primers,
+):
+    """Check the edit-spanning and cassette-junction PCR pairs."""
+    insert = str(insert).upper()
+    if not insert or set(insert) - set("ACGT"):
+        raise ValueError("insert must contain only A, C, G, and T")
+
+    spanning = insertion_primers(
+        reference,
+        cut,
+        arm_length=arm_length,
+        window=window,
+        insert_length=len(insert),
+        primer_designer=primer_designer,
+    )
+    if spanning.forward_start is None or spanning.reverse_end is None:
+        raise PrimerNotFoundError("Primer3 did not return primer positions")
+
+    cut_left = cut[0]
+    reference = reference.upper()
+    left = reference[max(0, cut_left - window):cut_left]
+    right = reference[cut_left:min(len(reference), cut_left + window)]
+    template = left + insert + right
+    junction = len(left)
+
+    left_size = junction + len(insert) - spanning.forward_start
+    right_size = spanning.reverse_end + len(insert) - junction + 1
+    left_pair = _check_pair(
+        template,
+        spanning.forward,
+        reverse_complement(insert),
+        left_size,
+        primer_designer,
+    )
+    right_pair = _check_pair(
+        template,
+        insert,
+        spanning.reverse,
+        right_size,
+        primer_designer,
+    )
+    return InsertionChecks(spanning, left_pair, right_pair)
 
 
 def checking_primers(

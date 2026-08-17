@@ -18,8 +18,11 @@ from crispr4p.disruption import (
 )
 from crispr4p.models import DesignResult
 from crispr4p.primers import (
+    InsertionChecks,
     InsertionPrimerPair,
+    JunctionPrimerPair,
     PrimerNotFoundError,
+    insertion_checks,
     insertion_primers,
 )
 from crispr4p.resources import read_fasta
@@ -37,7 +40,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA = PROJECT_ROOT / "data"
 CANDIDATES = DATA / "stop_cassettes.json"
 FASTA = DATA / "Schizosaccharomyces_pombe.ASM294v2.26.dna.toplevel.fa"
-FIRST = "TGATGACCTAGTGACCTAGTAGG"
+FIRST = "TGATGACGTGATGACCTAGTAGG"
 OLD_FIRST = "TAGTAGCCTAGTGACCTAGTAGG"
 ADE6_GUIDE = "ACATTGGCTTACGACGGTCG"
 ADE6_REVERSE_GUIDE = "GTGGCGACAGGGACACCTCG"
@@ -68,30 +71,39 @@ class DisruptionDesignTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.cassettes = load_cassettes(CANDIDATES)
-        cls.reference = read_fasta(FASTA)["III"].sequence
+        records = read_fasta(FASTA)
+        cls.reference = records["III"].sequence
+        cls.references = tuple(record.sequence for record in records.values())
 
     def test_packaged_candidates(self):
         self.assertEqual(tuple(range(1, 11)), tuple(c.id for c in self.cassettes))
         self.assertFalse(any(has_junction_pam(c.sequence) for c in self.cassettes))
         self.assertEqual(FIRST, self.cassettes[0].sequence)
         self.assertEqual(
-            "TGATGACTTAGTGACCTAGTAGG",
+            "GTGATGAGTGATGACTAGTGAGG",
             self.cassettes[-1].sequence,
         )
 
         data = json.loads(CANDIDATES.read_text(encoding="utf-8"))
         self.assertEqual(1, data["version"])
         self.assertEqual("ASM294v2.26", data["assembly"])
+        for cassette in self.cassettes:
+            for reference in self.references:
+                self.assertNotIn(cassette.sequence, reference)
+                self.assertNotIn(
+                    reverse_complement(cassette.sequence),
+                    reference,
+                )
 
     def test_candidate_details(self):
         cassette = self.cassettes[0]
 
-        self.assertEqual("TGATGACCTAGTGACCTAGT", cassette.guide)
+        self.assertEqual("TGATGACGTGATGACCTAGT", cassette.guide)
         self.assertEqual("AGG", cassette.pam)
         self.assertEqual(45.0, cassette.gc_percent)
         self.assertEqual(3, len(cassette.frames))
         self.assertEqual(
-            "CCTACTAGGTCACTAGGTCATCA",
+            "CCTACTAGGTCATCACGTCATCA",
             cassette.orient("-"),
         )
         self.assertEqual(FIRST, cassette.orient("+"))
@@ -184,6 +196,8 @@ class DisruptionDesignTests(unittest.TestCase):
             "PRIMER_LEFT_0_TM": 59.4,
             "PRIMER_RIGHT_0_TM": 60.2,
             "PRIMER_PAIR_0_PRODUCT_SIZE": 250,
+            "PRIMER_LEFT_0": [130, 20],
+            "PRIMER_RIGHT_0": [379, 20],
         }
         designer = Mock(return_value=answer)
         pair = insertion_primers(
@@ -215,6 +229,8 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertEqual("REVERSE", pair.reverse)
         self.assertEqual(250, pair.wt_product_size)
         self.assertEqual(273, pair.disrupted_product_size)
+        self.assertEqual(130, pair.forward_start)
+        self.assertEqual(379, pair.reverse_end)
 
         no_pair = Mock(return_value={"PRIMER_PAIR_NUM_RETURNED": 0})
         with self.assertRaises(PrimerNotFoundError):
@@ -222,6 +238,88 @@ class DisruptionDesignTests(unittest.TestCase):
                 "A" * 300 + "C" * 300,
                 (300, 301),
                 primer_designer=no_pair,
+            )
+
+    def test_junction_primer_inputs(self):
+        spanning = {
+            "PRIMER_PAIR_NUM_RETURNED": 1,
+            "PRIMER_LEFT_0_SEQUENCE": "FORWARD",
+            "PRIMER_RIGHT_0_SEQUENCE": "REVERSE",
+            "PRIMER_LEFT_0_TM": 59.4,
+            "PRIMER_RIGHT_0_TM": 60.2,
+            "PRIMER_PAIR_0_PRODUCT_SIZE": 298,
+            "PRIMER_LEFT_0": [130, 20],
+            "PRIMER_RIGHT_0": [427, 20],
+        }
+        left = {
+            "PRIMER_PAIR_NUM_RETURNED": 1,
+            "PRIMER_LEFT_0_SEQUENCE": "FORWARD",
+            "PRIMER_RIGHT_0_SEQUENCE": reverse_complement(FIRST),
+            "PRIMER_LEFT_0_TM": 59.4,
+            "PRIMER_RIGHT_0_TM": 59.1,
+            "PRIMER_PAIR_0_PRODUCT_SIZE": 193,
+        }
+        right = {
+            "PRIMER_PAIR_NUM_RETURNED": 1,
+            "PRIMER_LEFT_0_SEQUENCE": FIRST,
+            "PRIMER_RIGHT_0_SEQUENCE": "REVERSE",
+            "PRIMER_LEFT_0_TM": 59.1,
+            "PRIMER_RIGHT_0_TM": 60.2,
+            "PRIMER_PAIR_0_PRODUCT_SIZE": 151,
+        }
+        designer = Mock(side_effect=(spanning, left, right))
+
+        checks = insertion_checks(
+            "A" * 300 + "C" * 300,
+            (300, 301),
+            FIRST,
+            primer_designer=designer,
+        )
+
+        self.assertEqual(3, designer.call_count)
+        left_args, left_settings = designer.call_args_list[1].args
+        right_args, right_settings = designer.call_args_list[2].args
+        edited = "A" * 300 + FIRST + "C" * 300
+        self.assertEqual(edited, left_args["SEQUENCE_TEMPLATE"])
+        self.assertEqual("FORWARD", left_args["SEQUENCE_PRIMER"])
+        self.assertEqual(
+            reverse_complement(FIRST),
+            left_args["SEQUENCE_PRIMER_REVCOMP"],
+        )
+        self.assertEqual(FIRST, right_args["SEQUENCE_PRIMER"])
+        self.assertEqual("REVERSE", right_args["SEQUENCE_PRIMER_REVCOMP"])
+        self.assertEqual("check_primers", left_settings["PRIMER_TASK"])
+        self.assertEqual(57.0, left_settings["PRIMER_MIN_TM"])
+        self.assertEqual(63.0, left_settings["PRIMER_MAX_TM"])
+        self.assertEqual(
+            [[193, 193]],
+            left_settings["PRIMER_PRODUCT_SIZE_RANGE"],
+        )
+        self.assertEqual(
+            [[151, 151]],
+            right_settings["PRIMER_PRODUCT_SIZE_RANGE"],
+        )
+        self.assertEqual(193, checks.left.product_size)
+        self.assertEqual(151, checks.right.product_size)
+
+        failed = Mock(side_effect=(spanning, {"PRIMER_PAIR_NUM_RETURNED": 0}))
+        with self.assertRaises(PrimerNotFoundError):
+            insertion_checks(
+                "A" * 300 + "C" * 300,
+                (300, 301),
+                FIRST,
+                primer_designer=failed,
+            )
+
+        problem = dict(left)
+        problem["PRIMER_RIGHT_0_PROBLEMS"] = "high hairpin stability"
+        rejected = Mock(side_effect=(spanning, problem))
+        with self.assertRaisesRegex(PrimerNotFoundError, "high hairpin"):
+            insertion_checks(
+                "A" * 300 + "C" * 300,
+                (300, 301),
+                FIRST,
+                primer_designer=rejected,
             )
 
     def test_real_insertion_primers(self):
@@ -251,6 +349,50 @@ class DisruptionDesignTests(unittest.TestCase):
                 cut + 300,
             ),
         )
+
+    def test_real_junction_primers(self):
+        service = Crispr4pService.from_project_data()
+        guide = service.design_gene("ade6").guides[0]
+
+        for cassette in self.cassettes:
+            checks = service.insertion_checks(
+                guide.chromosome,
+                guide.cut_coordinates,
+                cassette.id,
+                "+",
+            )
+            self.assertEqual(checks.spanning.forward, checks.left.forward)
+            self.assertEqual(
+                reverse_complement(cassette.sequence),
+                checks.left.reverse,
+            )
+            self.assertEqual(cassette.sequence, checks.right.forward)
+            self.assertEqual(checks.spanning.reverse, checks.right.reverse)
+            self.assertEqual(193, checks.left.product_size)
+            self.assertEqual(151, checks.right.product_size)
+
+        reverse_guide = service.design_gene("bub1").guides[0]
+        for cassette in self.cassettes:
+            reverse_checks = service.insertion_checks(
+                reverse_guide.chromosome,
+                reverse_guide.cut_coordinates,
+                cassette.id,
+                "-",
+            )
+            self.assertEqual(cassette.sequence, reverse_checks.left.reverse)
+            self.assertEqual(
+                reverse_complement(cassette.sequence),
+                reverse_checks.right.forward,
+            )
+            self.assertEqual(197, reverse_checks.left.product_size)
+            self.assertEqual(123, reverse_checks.right.product_size)
+        with self.assertRaisesRegex(ValueError, "coding strand"):
+            service.insertion_checks(
+                guide.chromosome,
+                guide.cut_coordinates,
+                1,
+                None,
+            )
 
     def test_insertion_primer_endpoint(self):
         service = Mock()
@@ -297,6 +439,85 @@ class DisruptionDesignTests(unittest.TestCase):
                 "reverse_tm": 60.2,
                 "wt_product_size": 250,
                 "disrupted_product_size": 273,
+            },
+            json.loads(handler.wfile.getvalue()),
+        )
+
+    def test_junction_primer_endpoint(self):
+        spanning = InsertionPrimerPair(
+            forward="FORWARD",
+            reverse="REVERSE",
+            forward_tm=59.4,
+            reverse_tm=60.2,
+            wt_product_size=298,
+            insert_length=23,
+        )
+        checks = InsertionChecks(
+            spanning=spanning,
+            left=JunctionPrimerPair(
+                "FORWARD",
+                "CASSETTE_REVERSE",
+                59.4,
+                59.1,
+                193,
+            ),
+            right=JunctionPrimerPair(
+                "CASSETTE_FORWARD",
+                "REVERSE",
+                59.1,
+                60.2,
+                151,
+            ),
+        )
+        service = Mock()
+        service.insertion_checks.return_value = checks
+        handler = webapp.CRISPR4PHandler.__new__(webapp.CRISPR4PHandler)
+        handler.send_response = Mock()
+        handler.send_header = Mock()
+        handler.end_headers = Mock()
+        handler.wfile = BytesIO()
+
+        with patch.object(webapp, "create_service", return_value=service):
+            handler.serve_insertion_primers(
+                {
+                    "chromosome": ["III"],
+                    "cut_left": ["1316791"],
+                    "cut_right": ["1316792"],
+                    "cassette_id": ["1"],
+                    "coding_strand": ["+"],
+                }
+            )
+
+        service.insertion_checks.assert_called_once_with(
+            "III",
+            (1316791, 1316792),
+            1,
+            "+",
+            arm_length=80,
+            window=300,
+        )
+        self.assertEqual(
+            {
+                "forward": "FORWARD",
+                "reverse": "REVERSE",
+                "forward_tm": 59.4,
+                "reverse_tm": 60.2,
+                "wt_product_size": 298,
+                "disrupted_product_size": 321,
+                "left_junction": {
+                    "forward": "FORWARD",
+                    "reverse": "CASSETTE_REVERSE",
+                    "forward_tm": 59.4,
+                    "reverse_tm": 59.1,
+                    "product_size": 193,
+                },
+                "right_junction": {
+                    "forward": "CASSETTE_FORWARD",
+                    "reverse": "REVERSE",
+                    "forward_tm": 59.1,
+                    "reverse_tm": 60.2,
+                    "product_size": 151,
+                },
             },
             json.loads(handler.wfile.getvalue()),
         )
@@ -525,7 +746,7 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertEqual(10, len(cassettes["catalog"]))
         self.assertEqual(list(range(1, 11)), cassettes["choices"][0])
         self.assertEqual(
-            "TGA* TGA* CCT AGT GAC CTA GTA",
+            "TGA* TGA* CGT GAT GAC CTA GTA",
             cassettes["catalog"]["1"]["frames"][0],
         )
         self.assertEqual(80, arms[0]["arm_length"])
@@ -551,12 +772,20 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertNotIn("Cassette sequence (forward reference)", page)
         self.assertNotIn("computational candidate", page.lower())
         self.assertIn("Insertion-checking primers", page)
+        self.assertIn("Edit-spanning PCR", page)
+        self.assertIn("Left-junction PCR", page)
+        self.assertIn("Right-junction PCR", page)
         self.assertIn('id="insertion_primer_forward"', page)
+        self.assertIn('id="left_junction_reverse"', page)
+        self.assertIn('id="right_junction_forward"', page)
         self.assertIn("Expected WT product:", page)
         self.assertIn("Expected disrupted product:", page)
         self.assertIn('fetch("/insertion-primers?"', page)
+        self.assertIn("cassette_id: cassette.id", page)
+        self.assertIn("coding_strand: annotation.coding_strand", page)
         self.assertIn("var insertion_primer_cache = {};", page)
-        self.assertIn("update_insertion_primers(index);", page)
+        self.assertIn('var key = index + ":" + cassette.id;', page)
+        self.assertIn("update_insertion_primers(guide_number, cassette);", page)
 
 
 if __name__ == "__main__":
