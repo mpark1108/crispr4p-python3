@@ -38,9 +38,13 @@ function show_loader() {
     document.getElementById("search_content").style.visibility = "hidden";
 };
 
-var toggle_interface=function(id){
+var toggle_interface=function(id, button){
     var elem=$(id);
     elem.toggle(500);
+    if (button) {
+        var expanded=button.getAttribute("aria-expanded")==="true";
+        button.setAttribute("aria-expanded", expanded ? "false" : "true");
+    }
 };
 </script>
 

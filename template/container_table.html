@@ -6,7 +6,9 @@
     <b>Coordinates</b>=%(start)s to %(end)s<br>
   </div>
 
-  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('primers_table'))">Suggested sgRNAs</h3>
+  <h3 class="toggle_header">
+    <button type="button" class="toggle_button" aria-expanded="true" aria-controls="primers_table" onclick="toggle_interface(document.getElementById('primers_table'), this)">Suggested sgRNAs</button>
+  </h3>
   <div id="primers_table">
     <table id="posTable">
       <tbody>
@@ -18,16 +20,28 @@
     </table>
   </div>
 
-  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('selected_guide_and_cut'))">Selected sgRNA and Cut Site</h3>
-  <div id="selected_guide_and_cut" class="workflow_section">
+  <h3 class="toggle_header">
+    <button type="button" class="toggle_button" aria-expanded="false" aria-controls="selected_guide_and_cut" onclick="toggle_interface(document.getElementById('selected_guide_and_cut'), this)">Selected sgRNA and Cut Site</button>
+  </h3>
+  <div id="selected_guide_and_cut" class="workflow_section" style="display: none;">
     <div class="l_field">sgRNA:</div><div class="r_field" id="selected_guide"></div><br>
-    <div class="l_field">sgRNA GC content:</div><div class="r_field" id="selected_guide_gc"></div><br>
+    <div class="l_field">sgRNA GC content:</div>
+    <div class="r_field">
+      <span id="selected_guide_gc"></span>
+      <div class="gc_guidance">
+        40&ndash;60%% may be favorable but does not guarantee guide activity.
+        <a href="https://www.nature.com/articles/srep19675" target="_blank" rel="noopener noreferrer" aria-label="Liu et al. 2016 guide GC study (opens in new tab)">[1]</a>
+        <a href="https://academic.oup.com/nar/article/46/3/1375/4754467" target="_blank" rel="noopener noreferrer" aria-label="Labuhn et al. 2018 guide GC study (opens in new tab)">[2]</a>
+        <a href="https://academic.oup.com/bioinformatics/article/36/9/2684/5714741" target="_blank" rel="noopener noreferrer" aria-label="Xiang et al. 2020 guide GC study (opens in new tab)">[3]</a>
+      </div>
+    </div><br>
     <div class="l_field">PAM:</div><div class="r_field" id="selected_pam"></div><br>
     <div class="l_field">PAM coordinates (1-based, inclusive):</div><div class="r_field" id="selected_pam_coordinates"></div><br>
     <div class="l_field">Guide strand:</div><div class="r_field" id="selected_guide_strand"></div><br>
     <div class="l_field">Cas9 cut:</div><div class="r_field" id="selected_cut"></div><br>
 
-    <h5>Cut-site annotation</h5>
+    <h5 class="annotation_heading">Cut-site annotation</h5>
+    <div class="annotation_provenance">source: packaged PomBase GFF3 and gene viability snapshot</div>
     <div id="cut_annotation_summary" class="annotation_summary"></div>
     <details id="cut_annotation_details" class="annotation_details">
       <summary>More cut-site details</summary>
@@ -36,8 +50,10 @@
     <div id="cut_annotation_error" class="annotation_warning"></div>
   </div>
 
-  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('deletion_design'))">Deletion Design &mdash; Original CRISPR4P</h3>
-  <div id="deletion_design" class="workflow_section">
+  <h3 class="toggle_header">
+    <button type="button" class="toggle_button" aria-expanded="false" aria-controls="deletion_design" onclick="toggle_interface(document.getElementById('deletion_design'), this)">Deletion Design &mdash; Original CRISPR4P</button>
+  </h3>
+  <div id="deletion_design" class="workflow_section" style="display: none;">
     <h5>Traditional sgRNA cloning oligos</h5>
     <div class="l_field">Traditional cloning sgFw:</div><div class="r_field" id="primer_forward"></div><br>
     <div class="l_field">Traditional cloning sgRv:</div><div class="r_field" id="primer_reverse"></div><br>
@@ -60,8 +76,10 @@
     <div class="l_field">Region surrounding deletion junction:</div><div class="r_field">%(deleted_dna)s</div><br>
   </div>
 
-  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('spedit_oligos'))">SpEDIT/pLSB Golden Gate Cloning Oligos</h3>
-  <div id="spedit_oligos" class="workflow_section">
+  <h3 class="toggle_header project_workflow_header">
+    <button type="button" class="toggle_button" aria-expanded="false" aria-controls="spedit_oligos" onclick="toggle_interface(document.getElementById('spedit_oligos'), this)">SpEDIT/pLSB Golden Gate Cloning Oligos</button>
+  </h3>
+  <div id="spedit_oligos" class="workflow_section project_workflow" style="display: none;">
     <div class="l_field">Selected sgRNA:</div>
     <div class="r_field" id="spedit_guide"></div><br>
 
@@ -77,8 +95,10 @@
     <div id="spedit_error" class="annotation_warning"></div>
   </div>
 
-  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('stop_cassette_design'))">Stop-Cassette Disruption Design</h3>
-  <div id="stop_cassette_design" class="workflow_section">
+  <h3 class="toggle_header project_workflow_header">
+    <button type="button" class="toggle_button" aria-expanded="false" aria-controls="stop_cassette_design" onclick="toggle_interface(document.getElementById('stop_cassette_design'), this)">Stop-Cassette Disruption Design</button>
+  </h3>
+  <div id="stop_cassette_design" class="workflow_section project_workflow" style="display: none;">
     <div id="stop_cassette_status"></div>
     <div id="stop_cassette_content">
     <h5>Disruption cassette</h5>
@@ -114,26 +134,31 @@
     <div class="l_field">Expected WT product:</div><div class="r_field" id="insertion_primer_wt_size"></div><br>
     <div class="l_field">Expected disrupted product:</div><div class="r_field" id="insertion_primer_disrupted_size"></div><br>
 
-    <h6>Left-junction PCR</h6>
-    <div class="l_field">CkFw:</div><div class="r_field" id="left_junction_forward"></div><br>
-    <div class="l_field">CkFw Tm:</div><div class="r_field" id="left_junction_forward_tm"></div><br>
-    <div class="l_field">Cassette Rv:</div><div class="r_field" id="left_junction_reverse"></div><br>
-    <div class="l_field">Cassette Rv Tm:</div><div class="r_field" id="left_junction_reverse_tm"></div><br>
-    <div class="l_field">Expected WT product:</div><div class="r_field" id="left_junction_wt_size"></div><br>
-    <div class="l_field">Expected disrupted product:</div><div class="r_field" id="left_junction_product_size"></div><br>
+    <details id="junction_primer_details" class="annotation_details">
+      <summary>Junction-checking primers</summary>
+      <h6>Left-junction PCR</h6>
+      <div class="l_field">CkFw:</div><div class="r_field" id="left_junction_forward"></div><br>
+      <div class="l_field">CkFw Tm:</div><div class="r_field" id="left_junction_forward_tm"></div><br>
+      <div class="l_field">Cassette Rv:</div><div class="r_field" id="left_junction_reverse"></div><br>
+      <div class="l_field">Cassette Rv Tm:</div><div class="r_field" id="left_junction_reverse_tm"></div><br>
+      <div class="l_field">Expected WT product:</div><div class="r_field" id="left_junction_wt_size"></div><br>
+      <div class="l_field">Expected disrupted product:</div><div class="r_field" id="left_junction_product_size"></div><br>
 
-    <h6>Right-junction PCR</h6>
-    <div class="l_field">Cassette Fw:</div><div class="r_field" id="right_junction_forward"></div><br>
-    <div class="l_field">Cassette Fw Tm:</div><div class="r_field" id="right_junction_forward_tm"></div><br>
-    <div class="l_field">CkRv:</div><div class="r_field" id="right_junction_reverse"></div><br>
-    <div class="l_field">CkRv Tm:</div><div class="r_field" id="right_junction_reverse_tm"></div><br>
-    <div class="l_field">Expected WT product:</div><div class="r_field" id="right_junction_wt_size"></div><br>
-    <div class="l_field">Expected disrupted product:</div><div class="r_field" id="right_junction_product_size"></div><br>
+      <h6>Right-junction PCR</h6>
+      <div class="l_field">Cassette Fw:</div><div class="r_field" id="right_junction_forward"></div><br>
+      <div class="l_field">Cassette Fw Tm:</div><div class="r_field" id="right_junction_forward_tm"></div><br>
+      <div class="l_field">CkRv:</div><div class="r_field" id="right_junction_reverse"></div><br>
+      <div class="l_field">CkRv Tm:</div><div class="r_field" id="right_junction_reverse_tm"></div><br>
+      <div class="l_field">Expected WT product:</div><div class="r_field" id="right_junction_wt_size"></div><br>
+      <div class="l_field">Expected disrupted product:</div><div class="r_field" id="right_junction_product_size"></div><br>
+    </details>
     </div>
   </div>
 
-  <h3 class="toggle_header" onclick="toggle_interface(document.getElementById('wild_type_restoration'))">Wild-Type Restoration Design</h3>
-  <div id="wild_type_restoration" class="workflow_section">
+  <h3 class="toggle_header project_workflow_header">
+    <button type="button" class="toggle_button" aria-expanded="false" aria-controls="wild_type_restoration" onclick="toggle_interface(document.getElementById('wild_type_restoration'), this)">Wild-Type Restoration Design</button>
+  </h3>
+  <div id="wild_type_restoration" class="workflow_section project_workflow" style="display: none;">
     <div id="restoration_status"></div>
     <div id="restoration_content">
     <h5>Universal rescue guide</h5>
@@ -180,6 +205,9 @@
     function append_field(parent, label, value, class_name) {
       var row = document.createElement("div");
       row.className = "annotation_field" + (class_name ? " " + class_name : "");
+      if (label === "Gene viability" && value === "inviable (essential)") {
+        row.className += " annotation_warning";
+      }
 
       var label_element = document.createElement("strong");
       label_element.textContent = label + ": ";
@@ -364,12 +392,6 @@
           append_field(details, "Gene viability", detail_nearby.viability);
         }
       }
-
-      var provenance = document.createElement("p");
-      provenance.className = "annotation_provenance";
-      provenance.textContent =
-        "Annotation source: packaged PomBase GFF3 and gene viability snapshot.";
-      details.appendChild(provenance);
 
     }
 

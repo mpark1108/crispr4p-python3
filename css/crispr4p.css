@@ -285,9 +285,40 @@ border-width: 1px;
 }
 
 .toggle_header {
-  padding-left: 20px;
   width: 50%;
   background-color: #D1F0A6;
+}
+
+.toggle_button {
+  background: none;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  display: block;
+  font: inherit;
+  padding: 0 20px;
+  text-align: left;
+  width: 100%;
+}
+
+.toggle_button::before {
+  content: "▾";
+  display: inline-block;
+  width: 1.2em;
+}
+
+.toggle_button[aria-expanded="false"]::before {
+  content: "▸";
+}
+
+.toggle_button:focus-visible {
+  outline: 2px solid #1777B1;
+  outline-offset: 2px;
+}
+
+.project_workflow_header {
+  background-color: #ECE2CB;
+  color: #000000;
 }
 
 .toggle_header:hover {
@@ -305,6 +336,13 @@ border-width: 1px;
 .r_field {
    word-wrap:break-word;
    padding: 5px;
+}
+
+.gc_guidance {
+   color: #666666;
+   font-size: 90%;
+   font-style: italic;
+   margin-top: 3px;
 }
 
 .workflow_section {
@@ -325,6 +363,15 @@ border-width: 1px;
    padding: 4px 0;
 }
 
+.project_workflow .l_field {
+   background-color: #ECE2CB;
+   color: #000000;
+}
+
+.project_workflow .annotation_details {
+   border-left-color: #ECE2CB;
+}
+
 .annotation_field {
    margin: 4px 0;
 }
@@ -340,9 +387,15 @@ border-width: 1px;
    font-weight: bold;
 }
 
+.annotation_heading {
+   margin-bottom: 4px;
+}
+
 .annotation_provenance {
    color: #666666;
    font-size: 90%;
+   font-style: italic;
+   margin-bottom: 8px;
 }
 
 /* Footer */

@@ -755,8 +755,63 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertNotIn("sequence", arms[0])
         self.assertEqual("+", guide_rows[0]["coding_strand"])
         self.assertIn("Stop-Cassette Disruption Design", page)
+        self.assertEqual(
+            3,
+            page.count('class="toggle_header project_workflow_header"'),
+        )
+        self.assertEqual(
+            3,
+            page.count('class="workflow_section project_workflow"'),
+        )
+        self.assertEqual(6, page.count('class="toggle_button"'))
+        self.assertEqual(1, page.count('aria-expanded="true"'))
+        self.assertEqual(5, page.count('aria-expanded="false"'))
+        self.assertEqual(5, page.count('style="display: none;"'))
+        self.assertIn(
+            'aria-expanded="true" aria-controls="primers_table"',
+            page,
+        )
+        for section_id in (
+            "selected_guide_and_cut",
+            "deletion_design",
+            "spedit_oligos",
+            "stop_cassette_design",
+            "wild_type_restoration",
+        ):
+            self.assertIn(
+                'aria-expanded="false" aria-controls="{}"'.format(
+                    section_id
+                ),
+                page,
+            )
+        self.assertNotIn(
+            'id="selected_guide_and_cut" '
+            'class="workflow_section project_workflow"',
+            page,
+        )
+        self.assertNotIn(
+            'id="deletion_design" class="workflow_section project_workflow"',
+            page,
+        )
         self.assertIn('id="selected_guide_gc"', page)
         self.assertIn("candidate.gc_percent.toFixed(1)", page)
+        gc_guidance = (
+            "40&ndash;60% may be favorable but does not "
+            "guarantee guide activity."
+        )
+        guidance_start = page.index(gc_guidance)
+        self.assertEqual(1, page.count(gc_guidance))
+        self.assertLess(page.index('id="selected_guide_gc"'), guidance_start)
+        self.assertLess(guidance_start, page.index('id="selected_pam"'))
+        for reference in (
+            "https://www.nature.com/articles/srep19675",
+            "https://academic.oup.com/nar/article/46/3/1375/4754467",
+            "https://academic.oup.com/bioinformatics/article/36/9/2684/"
+            "5714741",
+        ):
+            self.assertIn('href="{}"'.format(reference), page)
+        self.assertEqual(3, page.count('rel="noopener noreferrer"'))
+        self.assertIn("Guide GC:", page)
         self.assertIn('id="stop_cassette_menu"', page)
         self.assertIn("Reading frame 1:", page)
         self.assertIn("Reading frame 3:", page)
@@ -775,8 +830,34 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertNotIn("computational candidate", page.lower())
         self.assertIn("Insertion-checking primers", page)
         self.assertIn("Edit-spanning PCR", page)
+        self.assertIn(
+            'id="junction_primer_details" class="annotation_details"',
+            page,
+        )
+        self.assertIn("<summary>Junction-checking primers</summary>", page)
         self.assertIn("Left-junction PCR", page)
         self.assertIn("Right-junction PCR", page)
+        details_start = page.index('<details id="junction_primer_details"')
+        details_end = page.index("</details>", details_start)
+        details = page[details_start:details_end]
+        opening_tag = page[details_start:page.index(">", details_start)]
+        self.assertNotIn(" open", opening_tag)
+        self.assertIn("Left-junction PCR", details)
+        self.assertIn("Right-junction PCR", details)
+        self.assertLess(page.index("Edit-spanning PCR"), details_start)
+        source = (
+            "source: packaged PomBase GFF3 and gene viability snapshot"
+        )
+        source_start = page.index(source)
+        self.assertEqual(1, page.count(source))
+        self.assertLess(page.index("Cut-site annotation"), source_start)
+        self.assertLess(
+            source_start,
+            page.index('id="cut_annotation_summary"'),
+        )
+        cut_details_start = page.index('<details id="cut_annotation_details"')
+        cut_details_end = page.index("</details>", cut_details_start)
+        self.assertNotIn(source, page[cut_details_start:cut_details_end])
         self.assertIn('id="insertion_primer_forward"', page)
         self.assertIn('id="left_junction_reverse"', page)
         self.assertIn('id="right_junction_forward"', page)
@@ -788,6 +869,31 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertIn("var insertion_primer_cache = {};", page)
         self.assertIn('var key = index + ":" + cassette.id;', page)
         self.assertIn("update_insertion_primers(guide_number, cassette);", page)
+
+        css = (PROJECT_ROOT / "css/crispr4p.css").read_text(encoding="utf-8")
+        shell = (PROJECT_ROOT / "template/bahler_template.html").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(".toggle_button::before {", css)
+        self.assertIn(".gc_guidance {", css)
+        self.assertIn("font-style: italic;", css)
+        self.assertIn(
+            '.toggle_button[aria-expanded="false"]::before {',
+            css,
+        )
+        self.assertIn(
+            'button.setAttribute("aria-expanded", expanded ? "false" : "true")',
+            shell,
+        )
+        self.assertIn(
+            'label === "Gene viability" && value === "inviable (essential)"',
+            page,
+        )
+        self.assertIn('row.className += " annotation_warning";', page)
+        self.assertIn(".project_workflow_header {", css)
+        self.assertIn(".project_workflow .l_field {", css)
+        self.assertIn(".project_workflow .annotation_details {", css)
+        self.assertEqual(3, css.count("#ECE2CB"))
 
 
 if __name__ == "__main__":
