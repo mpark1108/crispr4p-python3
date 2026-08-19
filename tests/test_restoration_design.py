@@ -40,6 +40,32 @@ class RestorationDesignTests(unittest.TestCase):
         self.assertEqual(self.reference[1316711:1316871], donor.sequence)
         self.assertEqual(reverse_complement(donor.sequence), donor.reverse)
         self.assertEqual(160, donor.total_length)
+
+        oligos = donor.oligos
+        self.assertEqual(donor.left_arm + donor.right_arm[:20], oligos.forward)
+        self.assertEqual(
+            reverse_complement(donor.left_arm[-20:] + donor.right_arm),
+            oligos.reverse,
+        )
+        self.assertEqual(
+            donor.left_arm[-20:] + donor.right_arm[:20],
+            oligos.overlap,
+        )
+        self.assertEqual(
+            reverse_complement(oligos.overlap),
+            oligos.reverse[-len(oligos.overlap):],
+        )
+        self.assertEqual(
+            (100, 100, 40),
+            (
+                len(oligos.forward),
+                len(oligos.reverse),
+                len(oligos.overlap),
+            ),
+        )
+        self.assertEqual(donor.sequence, oligos.product)
+        self.assertEqual(160, oligos.product_length)
+
         edited = donor.left_arm + self.cassettes[0].sequence + donor.right_arm
         self.assertEqual(donor.sequence, edited[:80] + edited[103:])
         self.assertIn("ACATTGGCTTACGACGGTCGTGG", donor.sequence)
@@ -144,13 +170,39 @@ class RestorationDesignTests(unittest.TestCase):
         self.assertFalse(cassette["has_internal_bsai"])
         self.assertEqual(80, donor["arm_length"])
         self.assertEqual(160, len(donor["left_arm"] + donor["right_arm"]))
+        self.assertEqual(100, donor["hrfw_length"])
+        self.assertEqual(100, donor["hrrv_length"])
+        self.assertEqual(40, donor["overlap_length"])
+        self.assertEqual(160, donor["hr_product_length"])
 
         self.assertIn("Wild-Type Restoration Design", page)
         self.assertIn('id="restoration_guide"', page)
         self.assertNotIn('id="restoration_cut"', page)
         self.assertIn('id="restoration_sequence"', page)
+        self.assertIn('id="restoration_hrfw"', page)
+        self.assertIn('id="restoration_hrrv"', page)
+        self.assertIn('id="restoration_hr_overlap"', page)
+        self.assertIn('id="restoration_hr_overlap_reverse"', page)
+        self.assertIn('id="restoration_hr_overlap_length"', page)
+        self.assertIn('id="restoration_hr_product_length"', page)
+        self.assertIn("SpEDIT forward oligo, 52 nt:", page)
+        self.assertIn("SpEDIT reverse oligo, 52 nt:", page)
+        self.assertNotIn("SpEDIT/pLSB forward oligo, 52 nt:", page)
+        self.assertIn("Complete donor (forward):", page)
+        self.assertIn("Overlap sequence (forward):", page)
+        self.assertIn("Overlap sequence (reverse):", page)
         self.assertIn('id="restoration_product_size"', page)
         self.assertIn("donor.left_arm + donor.right_arm", page)
+        restoration_start = page.index("Restoration donor")
+        oligo_start = page.index(
+            "HR-template construction oligos",
+            restoration_start,
+        )
+        self.assertLess(
+            page.index('id="restoration_total_length"'),
+            oligo_start,
+        )
+        self.assertLess(oligo_start, page.index("PCR validation"))
         self.assertIn(
             'pair.wt_product_size + " bp"',
             page,

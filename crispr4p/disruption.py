@@ -3,6 +3,7 @@
 import json
 from dataclasses import dataclass
 
+from .primers import overlap_oligos
 from .spedit import reverse_complement
 
 
@@ -123,6 +124,15 @@ class DisruptionDonor:
     @property
     def total_length(self):
         return len(self.sequence)
+
+    @property
+    def oligos(self):
+        start = len(self.left_arm)
+        return overlap_oligos(
+            self.sequence,
+            start,
+            start + len(self.insert),
+        )
 
 
 def _cut_index(reference, cut):

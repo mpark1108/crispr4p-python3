@@ -338,6 +338,10 @@ border-width: 1px;
    padding: 5px;
 }
 
+.field_break {
+   clear: both;
+}
+
 .gc_guidance {
    color: #666666;
    font-size: 90%;

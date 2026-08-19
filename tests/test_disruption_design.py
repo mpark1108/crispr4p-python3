@@ -24,6 +24,7 @@ from crispr4p.primers import (
     PrimerNotFoundError,
     insertion_checks,
     insertion_primers,
+    overlap_oligos,
 )
 from crispr4p.resources import read_fasta
 from crispr4p.service import Crispr4pService
@@ -163,6 +164,21 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertEqual(183, donor.total_length)
         self.assertEqual(reverse_complement(donor.sequence), donor.reverse)
 
+        oligos = donor.oligos
+        self.assertEqual(donor.left_arm + donor.insert, oligos.forward)
+        self.assertEqual(
+            reverse_complement(donor.insert + donor.right_arm),
+            oligos.reverse,
+        )
+        self.assertEqual(donor.insert, oligos.overlap)
+        self.assertEqual(
+            reverse_complement(oligos.overlap),
+            oligos.reverse[-len(oligos.overlap):],
+        )
+        self.assertEqual((103, 103), (len(oligos.forward), len(oligos.reverse)))
+        self.assertEqual(donor.sequence, oligos.product)
+        self.assertEqual(183, oligos.product_length)
+
         minus = build_donor(
             self.reference,
             (1316791, 1316792),
@@ -171,6 +187,8 @@ class DisruptionDesignTests(unittest.TestCase):
             80,
         )
         self.assertEqual(reverse_complement(FIRST), minus.insert)
+        self.assertEqual(minus.insert, minus.oligos.overlap)
+        self.assertEqual(minus.sequence, minus.oligos.product)
         with self.assertRaisesRegex(ValueError, "positive integer"):
             build_donor(
                 self.reference,
@@ -187,6 +205,34 @@ class DisruptionDesignTests(unittest.TestCase):
                 "+",
                 80,
             )
+
+    def test_construction_oligos_cover_every_cassette_orientation(self):
+        for cassette in self.cassettes:
+            for strand in ("+", "-"):
+                donor = build_donor(
+                    self.reference,
+                    (1316791, 1316792),
+                    cassette,
+                    strand,
+                    80,
+                )
+                oligos = donor.oligos
+                self.assertEqual(
+                    (103, 103, 23),
+                    (
+                        len(oligos.forward),
+                        len(oligos.reverse),
+                        len(oligos.overlap),
+                    ),
+                )
+                self.assertEqual(donor.insert, oligos.overlap)
+                self.assertEqual(donor.sequence, oligos.product)
+
+    def test_construction_oligo_validation(self):
+        with self.assertRaisesRegex(ValueError, "invalid nucleotide"):
+            overlap_oligos("AACN", 1, 3)
+        with self.assertRaisesRegex(ValueError, "within the donor"):
+            overlap_oligos("AACG", 2, 2)
 
     def test_insertion_primer_inputs(self):
         answer = {
@@ -683,9 +729,22 @@ class DisruptionDesignTests(unittest.TestCase):
         if arms[0]["coding_strand"] == "-":
             insert = reverse_complement(insert)
         sequence = arms[0]["left_arm"] + insert + arms[0]["right_arm"]
+        overlap_start = len(sequence) - arms[0]["hrrv_length"]
+        browser_forward = sequence[:arms[0]["hrfw_length"]]
+        browser_reverse = reverse_complement(sequence[overlap_start:])
+        browser_overlap = sequence[
+            overlap_start:arms[0]["hrfw_length"]
+        ]
 
         self.assertEqual(donor.sequence, sequence)
         self.assertEqual(donor.reverse, reverse_complement(sequence))
+        self.assertEqual(donor.oligos.forward, browser_forward)
+        self.assertEqual(donor.oligos.reverse, browser_reverse)
+        self.assertEqual(donor.oligos.overlap, browser_overlap)
+        self.assertEqual(103, arms[0]["hrfw_length"])
+        self.assertEqual(103, arms[0]["hrrv_length"])
+        self.assertEqual(23, arms[0]["overlap_length"])
+        self.assertEqual(183, arms[0]["hr_product_length"])
         self.assertEqual(10, len(cassettes["catalog"]))
         self.assertEqual(144, len(cassettes["choices"]))
         self.assertEqual(144, len(arms))
@@ -817,8 +876,45 @@ class DisruptionDesignTests(unittest.TestCase):
         self.assertIn("Reading frame 3:", page)
         self.assertNotIn("Reading frame 0:", page)
         self.assertIn("Disruption donor", page)
-        self.assertIn("Complete donor (forward reference):", page)
+        self.assertIn("Oriented cassette (forward):", page)
+        self.assertIn("Complete donor (forward):", page)
+        self.assertNotIn("forward reference", page)
+        self.assertIn(
+            'class="l_field field_break">Oriented cassette (forward):',
+            page,
+        )
+        self.assertIn(
+            'class="l_field field_break">Right homology arm:',
+            page,
+        )
         self.assertIn('id="donor_total_length"', page)
+        self.assertEqual(2, page.count("HR-template construction oligos"))
+        self.assertIn('id="donor_hrfw"', page)
+        self.assertIn('id="donor_hrrv"', page)
+        self.assertIn('id="donor_hr_overlap"', page)
+        self.assertIn('id="donor_hr_overlap_reverse"', page)
+        self.assertIn('id="donor_hr_overlap_length"', page)
+        self.assertIn('id="donor_hr_product_length"', page)
+        self.assertIn("Overlap sequence (forward):", page)
+        self.assertIn("Overlap sequence (reverse):", page)
+        self.assertIn("rev_complement(oligos.overlap)", page)
+        self.assertLess(
+            page.index("Overlap sequence (forward):"),
+            page.index("Overlap sequence (reverse):"),
+        )
+        self.assertLess(
+            page.index("Overlap sequence (reverse):"),
+            page.index("Overlap length:"),
+        )
+        self.assertIn("function hr_oligos(sequence, donor)", page)
+        self.assertLess(
+            page.index('id="donor_total_length"'),
+            page.index("HR-template construction oligos"),
+        )
+        self.assertLess(
+            page.index("HR-template construction oligos"),
+            page.index("Insertion-checking primers"),
+        )
         self.assertNotIn(donors[0].sequence, page)
         self.assertIn(
             "donor.left_arm + oriented_insert + donor.right_arm",
@@ -826,7 +922,6 @@ class DisruptionDesignTests(unittest.TestCase):
         )
         self.assertIn(FIRST, page)
         self.assertNotIn(OLD_FIRST, page)
-        self.assertNotIn("Cassette sequence (forward reference)", page)
         self.assertNotIn("computational candidate", page.lower())
         self.assertIn("Insertion-checking primers", page)
         self.assertIn("Edit-spanning PCR", page)

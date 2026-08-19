@@ -117,12 +117,20 @@
     <h5>Disruption donor</h5>
     <div class="l_field">Homology arm length:</div><div class="r_field" id="donor_arm_length"></div><br>
     <div class="l_field">Left homology arm:</div><div class="r_field" id="donor_left_arm"></div><br>
-    <div class="l_field">Oriented cassette (forward reference):</div><div class="r_field" id="donor_insert"></div><br>
-    <div class="l_field">Right homology arm:</div><div class="r_field" id="donor_right_arm"></div><br>
-    <div class="l_field">Complete donor (forward reference):</div><div class="r_field" id="donor_sequence"></div><br>
+    <div class="l_field field_break">Oriented cassette (forward):</div><div class="r_field" id="donor_insert"></div><br>
+    <div class="l_field field_break">Right homology arm:</div><div class="r_field" id="donor_right_arm"></div><br>
+    <div class="l_field">Complete donor (forward):</div><div class="r_field" id="donor_sequence"></div><br>
     <div class="l_field">Reverse complement:</div><div class="r_field" id="donor_reverse"></div><br>
     <div class="l_field">Cassette length:</div><div class="r_field" id="donor_cassette_length"></div><br>
     <div class="l_field">Total donor length:</div><div class="r_field" id="donor_total_length"></div><br>
+
+    <h5>HR-template construction oligos</h5>
+    <div class="l_field">HRfw:</div><div class="r_field" id="donor_hrfw"></div><br>
+    <div class="l_field">HRrv:</div><div class="r_field" id="donor_hrrv"></div><br>
+    <div class="l_field">Overlap sequence (forward):</div><div class="r_field" id="donor_hr_overlap"></div><br>
+    <div class="l_field">Overlap sequence (reverse):</div><div class="r_field" id="donor_hr_overlap_reverse"></div><br>
+    <div class="l_field">Overlap length:</div><div class="r_field" id="donor_hr_overlap_length"></div><br>
+    <div class="l_field">Expected HR-template product:</div><div class="r_field" id="donor_hr_product_length"></div><br>
 
     <h5>Insertion-checking primers</h5>
     <div id="insertion_primer_status"></div>
@@ -164,17 +172,25 @@
     <h5>Universal rescue guide</h5>
     <div class="l_field">Protospacer:</div><div class="r_field" id="restoration_guide"></div><br>
     <div class="l_field">PAM:</div><div class="r_field" id="restoration_pam"></div><br>
-    <div class="l_field">SpEDIT/pLSB forward oligo, 52 nt:</div><div class="r_field" id="restoration_forward_oligo"></div><br>
-    <div class="l_field">SpEDIT/pLSB reverse oligo, 52 nt:</div><div class="r_field" id="restoration_reverse_oligo"></div><br>
+    <div class="l_field">SpEDIT forward oligo, 52 nt:</div><div class="r_field" id="restoration_forward_oligo"></div><br>
+    <div class="l_field">SpEDIT reverse oligo, 52 nt:</div><div class="r_field" id="restoration_reverse_oligo"></div><br>
     <div class="l_field">Internal BsaI site check:</div><div class="r_field" id="restoration_bsai"></div><br>
 
     <h5>Restoration donor</h5>
     <div class="l_field">Homology arm length:</div><div class="r_field" id="restoration_arm_length"></div><br>
     <div class="l_field">WT left homology arm:</div><div class="r_field" id="restoration_left_arm"></div><br>
     <div class="l_field">WT right homology arm:</div><div class="r_field" id="restoration_right_arm"></div><br>
-    <div class="l_field">Complete donor (forward reference):</div><div class="r_field" id="restoration_sequence"></div><br>
+    <div class="l_field">Complete donor (forward):</div><div class="r_field" id="restoration_sequence"></div><br>
     <div class="l_field">Reverse complement:</div><div class="r_field" id="restoration_reverse"></div><br>
     <div class="l_field">Total donor length:</div><div class="r_field" id="restoration_total_length"></div><br>
+
+    <h5>HR-template construction oligos</h5>
+    <div class="l_field">HRfw:</div><div class="r_field" id="restoration_hrfw"></div><br>
+    <div class="l_field">HRrv:</div><div class="r_field" id="restoration_hrrv"></div><br>
+    <div class="l_field">Overlap sequence (forward):</div><div class="r_field" id="restoration_hr_overlap"></div><br>
+    <div class="l_field">Overlap sequence (reverse):</div><div class="r_field" id="restoration_hr_overlap_reverse"></div><br>
+    <div class="l_field">Overlap length:</div><div class="r_field" id="restoration_hr_overlap_length"></div><br>
+    <div class="l_field">Expected HR-template product:</div><div class="r_field" id="restoration_hr_product_length"></div><br>
 
     <h5>PCR validation</h5>
     <div class="l_field">CkFw:</div><div class="r_field" id="restoration_primer_forward"></div><br>
@@ -460,6 +476,15 @@
       }
     }
 
+    function hr_oligos(sequence, donor) {
+      var overlap_start = sequence.length - donor.hrrv_length;
+      return {
+        forward: sequence.slice(0, donor.hrfw_length),
+        reverse: rev_complement(sequence.slice(overlap_start)),
+        overlap: sequence.slice(overlap_start, donor.hrfw_length)
+      };
+    }
+
     function update_donor(guide_number, cassette) {
       var donor = donor_arms[Number(guide_number)] || null;
       var arm_length = "";
@@ -470,6 +495,12 @@
       var reverse = "";
       var cassette_length = "";
       var total_length = "";
+      var hrfw = "";
+      var hrrv = "";
+      var overlap = "";
+      var overlap_reverse = "";
+      var overlap_length = "";
+      var hr_product_length = "";
       if (donor && cassette) {
         var oriented_insert = cassette.sequence;
         if (donor.coding_strand === "-") {
@@ -486,6 +517,15 @@
         reverse = "5'-" + rev_complement(donor_sequence) + "-3'";
         cassette_length = cassette.length + " bp";
         total_length = donor_sequence.length + " bp";
+        var oligos = hr_oligos(donor_sequence, donor);
+        hrfw = "5'-" + oligos.forward + "-3' (" +
+          oligos.forward.length + " nt)";
+        hrrv = "5'-" + oligos.reverse + "-3' (" +
+          oligos.reverse.length + " nt)";
+        overlap = "5'-" + oligos.overlap + "-3'";
+        overlap_reverse = "5'-" + rev_complement(oligos.overlap) + "-3'";
+        overlap_length = donor.overlap_length + " nt";
+        hr_product_length = donor.hr_product_length + " bp";
       }
 
       document.getElementById("donor_arm_length").textContent = arm_length;
@@ -497,6 +537,15 @@
       document.getElementById("donor_cassette_length").textContent =
         cassette_length;
       document.getElementById("donor_total_length").textContent = total_length;
+      document.getElementById("donor_hrfw").textContent = hrfw;
+      document.getElementById("donor_hrrv").textContent = hrrv;
+      document.getElementById("donor_hr_overlap").textContent = overlap;
+      document.getElementById("donor_hr_overlap_reverse").textContent =
+        overlap_reverse;
+      document.getElementById("donor_hr_overlap_length").textContent =
+        overlap_length;
+      document.getElementById("donor_hr_product_length").textContent =
+        hr_product_length;
     }
 
     function update_restoration(guide_number, cassette) {
@@ -510,7 +559,10 @@
         "restoration_bsai", "restoration_arm_length",
         "restoration_left_arm", "restoration_right_arm",
         "restoration_sequence", "restoration_reverse",
-        "restoration_total_length"
+        "restoration_total_length", "restoration_hrfw",
+        "restoration_hrrv", "restoration_hr_overlap",
+        "restoration_hr_overlap_reverse", "restoration_hr_overlap_length",
+        "restoration_hr_product_length"
       ];
       for (var field_index = 0; field_index < fields.length; field_index++) {
         document.getElementById(fields[field_index]).textContent = "";
@@ -552,6 +604,19 @@
         "5'-" + rev_complement(sequence) + "-3'";
       document.getElementById("restoration_total_length").textContent =
         sequence.length + " bp";
+      var oligos = hr_oligos(sequence, donor);
+      document.getElementById("restoration_hrfw").textContent =
+        "5'-" + oligos.forward + "-3' (" + oligos.forward.length + " nt)";
+      document.getElementById("restoration_hrrv").textContent =
+        "5'-" + oligos.reverse + "-3' (" + oligos.reverse.length + " nt)";
+      document.getElementById("restoration_hr_overlap").textContent =
+        "5'-" + oligos.overlap + "-3'";
+      document.getElementById("restoration_hr_overlap_reverse").textContent =
+        "5'-" + rev_complement(oligos.overlap) + "-3'";
+      document.getElementById("restoration_hr_overlap_length").textContent =
+        donor.overlap_length + " nt";
+      document.getElementById("restoration_hr_product_length").textContent =
+        donor.hr_product_length + " bp";
     }
 
     function update_cassette(guide_number) {

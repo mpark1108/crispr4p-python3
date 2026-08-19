@@ -318,34 +318,54 @@ def donor_data(donor_choices):
             continue
 
         first = choices[0]
+        oligos = first.oligos
         row = {
             "coding_strand": first.coding_strand,
             "arm_length": first.arm_length,
             "left_arm": first.left_arm,
             "right_arm": first.right_arm,
+            "hrfw_length": len(oligos.forward),
+            "hrrv_length": len(oligos.reverse),
+            "overlap_length": len(oligos.overlap),
+            "hr_product_length": oligos.product_length,
         }
         for donor in choices[1:]:
+            donor_oligos = donor.oligos
             if (
                 donor.coding_strand != first.coding_strand
                 or donor.arm_length != first.arm_length
                 or donor.left_arm != first.left_arm
                 or donor.right_arm != first.right_arm
+                or len(donor_oligos.forward) != row["hrfw_length"]
+                or len(donor_oligos.reverse) != row["hrrv_length"]
+                or len(donor_oligos.overlap) != row["overlap_length"]
+                or donor_oligos.product_length != row["hr_product_length"]
             ):
-                raise ValueError("donors for one guide must share homology arms")
+                raise ValueError(
+                    "donors for one guide must share arms and oligo lengths"
+                )
         rows.append(row)
     return rows
 
 
 def restoration_data(donors):
     """Build guide-aligned restoration donor data."""
-    return [
-        None if donor is None else {
+    rows = []
+    for donor in donors:
+        if donor is None:
+            rows.append(None)
+            continue
+        oligos = donor.oligos
+        rows.append({
             "arm_length": donor.arm_length,
             "left_arm": donor.left_arm,
             "right_arm": donor.right_arm,
-        }
-        for donor in donors
-    ]
+            "hrfw_length": len(oligos.forward),
+            "hrrv_length": len(oligos.reverse),
+            "overlap_length": len(oligos.overlap),
+            "hr_product_length": oligos.product_length,
+        })
+    return rows
 
 
 def _compact_json(value):

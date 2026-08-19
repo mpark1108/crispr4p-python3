@@ -136,7 +136,7 @@ class TestResultViews(unittest.TestCase):
         )
 
         self.assertEqual(
-            "02cb2a4c6ea20f03943062ca13a054c29a81ad757ec1740a7975f9fad17dccc0",
+            "61550f730a1fae80f99b90ffca03bb18fe3fd41092432ff4640c8ed4fbd774c0",
             hashlib.sha256(result.encode("utf-8")).hexdigest(),
         )
         self.assertIn("Selected sgRNA and Cut Site", result)

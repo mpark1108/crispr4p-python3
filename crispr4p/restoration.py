@@ -2,7 +2,11 @@
 
 from dataclasses import dataclass
 
+from .primers import overlap_oligos
 from .spedit import reverse_complement
+
+
+OLIGO_EXTENSION = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -22,6 +26,17 @@ class RestorationDonor:
     @property
     def total_length(self):
         return len(self.sequence)
+
+    @property
+    def oligos(self):
+        if self.arm_length < OLIGO_EXTENSION:
+            raise ValueError("homology arms are too short for HR oligos")
+        junction = len(self.left_arm)
+        return overlap_oligos(
+            self.sequence,
+            junction - OLIGO_EXTENSION,
+            junction + OLIGO_EXTENSION,
+        )
 
 
 def build_donor(reference, cut, arm_length):

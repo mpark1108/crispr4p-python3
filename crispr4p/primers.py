@@ -66,6 +66,39 @@ class PrimerNotFoundError(RuntimeError):
 
 
 @dataclass(frozen=True, slots=True)
+class DonorOligos:
+    """Two overlapping oligos used to build an HR template."""
+
+    forward: str
+    reverse: str
+    overlap: str
+
+    @property
+    def product(self):
+        reverse = reverse_complement(self.reverse)
+        return self.forward + reverse[len(self.overlap):]
+
+    @property
+    def product_length(self):
+        return len(self.product)
+
+
+def overlap_oligos(sequence, overlap_start, overlap_end):
+    """Split a donor around one shared sequence."""
+    sequence = sequence.upper()
+    if set(sequence) - set("ACGT"):
+        raise ValueError("donor contains an invalid nucleotide")
+    if not 0 <= overlap_start < overlap_end <= len(sequence):
+        raise ValueError("overlap must be within the donor")
+
+    return DonorOligos(
+        forward=sequence[:overlap_end],
+        reverse=reverse_complement(sequence[overlap_start:]),
+        overlap=sequence[overlap_start:overlap_end],
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class InsertionPrimerPair:
     """One PCR pair spanning a cassette insertion."""
 
